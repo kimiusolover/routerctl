@@ -30,7 +30,9 @@ jobs:
       - name: Install image and OCR tools (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install imagemagick tesseract -y --no-progress
+        run: |
+          scoop install imagemagick tesseract
+          "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/routerctl
