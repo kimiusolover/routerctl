@@ -18,6 +18,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # Image cropping and OCR integration tests invoke these tools directly.
+      - name: Install image and OCR tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick tesseract-ocr
+      - name: Install image and OCR tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install imagemagick tesseract
+      - name: Install image and OCR tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install imagemagick tesseract -y --no-progress
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/routerctl
