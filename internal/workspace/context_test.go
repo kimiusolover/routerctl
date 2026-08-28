@@ -25,12 +25,21 @@ func TestResolveSeparatesWorkspaceGitAndComponentRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctx.WorkspaceRoot != root || ctx.ComponentRoot != componentRoot || ctx.GitRoot != componentRoot {
+	if !sameDirectory(ctx.WorkspaceRoot, root) || !sameDirectory(ctx.ComponentRoot, componentRoot) || !sameDirectory(ctx.GitRoot, componentRoot) {
 		t.Fatalf("wrong roots: %+v", ctx)
 	}
 	if ctx.Component != "firmware" || ctx.ComponentPath != filepath.Join("config", "device.yaml") {
 		t.Fatalf("wrong component context: %+v", ctx)
 	}
+}
+
+// macOS exposes /var as a symlink to /private/var. Git resolves it to the
+// physical path, while t.TempDir returns the logical path, so compare the
+// directories by identity rather than their spelling.
+func sameDirectory(tested, expected string) bool {
+	testedInfo, testedErr := os.Stat(tested)
+	expectedInfo, expectedErr := os.Stat(expected)
+	return testedErr == nil && expectedErr == nil && os.SameFile(testedInfo, expectedInfo)
 }
 
 func TestResolveRejectsUnregisteredFile(t *testing.T) {

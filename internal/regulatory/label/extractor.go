@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -300,9 +301,8 @@ func ExtractAndCommitBundleWithOptions(
 	}
 	args = append(args, "null:")
 
-	cmd := exec.CommandContext(ctx, "magick", args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("magick execution failed (%v): %s", err, string(out))
+	if err := runImageMagick(ctx, args); err != nil {
+		return nil, err
 	}
 
 	// 7. Compute SHA-256 for all artifacts
@@ -396,6 +396,26 @@ func ExtractAndCommitBundleWithOptions(
 	}
 
 	return bundle, nil
+}
+
+// runImageMagick supports both ImageMagick 7 (magick) and ImageMagick 6
+// (convert). The latter is shipped by Ubuntu's default imagemagick package.
+func runImageMagick(ctx context.Context, args []string) error {
+	cmd := exec.CommandContext(ctx, "magick", args...)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		return fmt.Errorf("magick execution failed (%v): %s", err, string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "convert", args...)
+	out, fallbackErr := cmd.CombinedOutput()
+	if fallbackErr != nil {
+		return fmt.Errorf("ImageMagick execution failed (magick: %v; convert: %v): %s", err, fallbackErr, string(out))
+	}
+	return nil
 }
 
 // VerifyBundleDirectory verifies that a bundle directory contains a valid bundle.yaml,
