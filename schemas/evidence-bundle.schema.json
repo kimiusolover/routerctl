@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://routerctl.dev/schemas/evidence-bundle.schema.json",
+  "title": "routerctl regulatory evidence bundle",
+  "type": "object",
+  "required": ["apiVersion", "device", "jurisdiction", "authority", "certificationNumber", "numberSource", "documents"],
+  "properties": {
+    "apiVersion": {"const": "routerctl.regulatory.evidence-bundle/v1"},
+    "device": {"type": "object", "required": ["vendor", "model", "revision"]},
+    "jurisdiction": {"type": "string", "minLength": 1},
+    "authority": {"type": "string", "minLength": 1},
+    "certificationNumber": {"type": "string", "minLength": 1},
+    "numberSource": {"type": "object", "required": ["type", "url", "evidenceFile", "sha256"]},
+    "documents": {"type": "array", "minItems": 1}
+  }
+}

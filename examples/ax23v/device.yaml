@@ -1,0 +1,14 @@
+apiVersion: routerctl.dev/v1alpha1
+kind: Device
+metadata:
+  name: ax23v-lab
+spec:
+  device: ax23v-v1
+  backend: github
+  transport: ssh
+  target: ax23v-v1.bin
+  github:
+    # Replace with the GitHub owner/repository that hosts router-firmware.
+    repository: kimiusolover/router-firmware
+    # Empty uses the latest non-prerelease GitHub Release.
+    tag: ""

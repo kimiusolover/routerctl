@@ -1,0 +1,12 @@
+# SYNTHETIC TEST FIXTURE ONLY. This is not an MIC certification document and
+# must never be used as a device constraint or certification claim.
+MIC 技術基準適合
+Vendor: TP-Link
+Model: Archer AX23V
+Revision: v1
+認証番号: 201-AX23V
+Page 17
+2412 MHz - 2472 MHz
+Bandwidth: 20, 40 MHz
+Certified Maximum Conducted Output Power: 17.84 dBm
+Antenna Gain: 3.0 dBi
