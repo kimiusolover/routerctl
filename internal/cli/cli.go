@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
-	"flag"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/example/routerctl/internal/artifactverify"
 	"github.com/example/routerctl/internal/backend"
 	githubbackend "github.com/example/routerctl/internal/backend/github"
+	nativebackend "github.com/example/routerctl/internal/backend/native"
+	"github.com/example/routerctl/internal/firmwaregate"
 	"github.com/example/routerctl/internal/manifest"
 	"github.com/example/routerctl/internal/planner"
 	"github.com/example/routerctl/internal/regulatory"
@@ -21,6 +24,7 @@ import (
 	"github.com/example/routerctl/internal/regulatory/explain"
 	"github.com/example/routerctl/internal/regulatory/importer/mic"
 	"github.com/example/routerctl/internal/regulatory/label"
+	"github.com/example/routerctl/internal/regulatory/profile"
 	"github.com/example/routerctl/internal/regulatory/validate"
 	"github.com/example/routerctl/internal/releaseverify"
 	verifycmd "github.com/example/routerctl/internal/verify"
@@ -40,6 +44,11 @@ func Run(args []string, info BuildInfo) error {
 	}
 
 	switch args[0] {
+	case "build":
+		if len(args) != 2 {
+			return errors.New("usage: routerctl build <manifest>")
+		}
+		return runBuild(args[1])
 	case "regulatory":
 		return runRegulatory(args[1:])
 	case "version":
@@ -129,6 +138,72 @@ func Run(args []string, info BuildInfo) error {
 	}
 }
 
+func runBuild(manifestPath string) error {
+	m, err := manifest.Load(manifestPath)
+	if err != nil {
+		return err
+	}
+	result := verifycmd.Manifest(m)
+	if !result.OK {
+		return fmt.Errorf("verification failed: %v", result.Errors)
+	}
+	if m.Spec.Backend != "native" {
+		return fmt.Errorf("build: backend %q is not supported", m.Spec.Backend)
+	}
+	manifestDir, err := filepath.Abs(filepath.Dir(manifestPath))
+	if err != nil {
+		return fmt.Errorf("build: resolve manifest directory: %w", err)
+	}
+	repository, err := resolveInside(manifestDir, m.Spec.Build.Repository)
+	if err != nil {
+		return fmt.Errorf("build: repository: %w", err)
+	}
+	info, err := os.Stat(repository)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("build: repository is not a directory: %s", repository)
+	}
+	// This is intentionally before command execution: router-firmware is the
+	// authority on whether it is safe to assemble an image for this device.
+	if err := firmwaregate.Check(repository, m.Spec.Device); err != nil {
+		return err
+	}
+	output, err := resolveInside(repository, m.Spec.Build.Output)
+	if err != nil {
+		return fmt.Errorf("build: output: %w", err)
+	}
+	b, err := nativebackend.New(nativebackend.Config{Command: m.Spec.Build.Command})
+	if err != nil {
+		return err
+	}
+	built, err := b.Build(context.Background(), backend.BuildRequest{
+		Device: m.Spec.Device, Profile: m.Spec.Build.Profile, WorkspaceRoot: repository, OutputDir: filepath.Dir(output),
+	})
+	if err != nil {
+		return err
+	}
+	for _, artifact := range built.Artifacts {
+		if filepath.Clean(artifact.Path) == output {
+			if err := artifactverify.Verify(output, artifact, m.Spec.Artifact.Expected); err != nil {
+				return err
+			}
+			return printJSON(os.Stdout, artifact)
+		}
+	}
+	return fmt.Errorf("build: expected output was not produced: %s", output)
+}
+
+func resolveInside(root, path string) (string, error) {
+	if path == "" || filepath.IsAbs(path) {
+		return "", errors.New("must be a non-empty relative path")
+	}
+	full := filepath.Clean(filepath.Join(root, path))
+	rel, err := filepath.Rel(root, full)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("must remain inside its root")
+	}
+	return full, nil
+}
+
 type cropList []label.CropTarget
 
 func (c *cropList) String() string {
@@ -157,6 +232,7 @@ func runRegulatoryLabelExtract(args []string) error {
 		imagePath   string
 		outDir      string
 		layoutID    string
+		layoutPath  string
 		srcSHA256   string
 		vendor      string
 		model       string
@@ -167,13 +243,14 @@ func runRegulatoryLabelExtract(args []string) error {
 		ocrPattern  string
 		ocrLang     string
 		ocrOptional bool
-		noOCR       bool
+		noOCR       = true
 		crops       cropList
 	)
 	fs.StringVar(&imagePath, "image", "", "Path to source label image")
 	fs.StringVar(&outDir, "out", "", "Output bundle directory")
 	fs.StringVar(&outDir, "output", "", "Output bundle directory (alias)")
 	fs.StringVar(&layoutID, "layout-id", "", "Layout identifier")
+	fs.StringVar(&layoutPath, "layout", "", "Reviewed YAML label-layout definition")
 	fs.StringVar(&srcSHA256, "source-sha256", "", "SHA-256 hash of source image")
 	fs.StringVar(&vendor, "vendor", "", "Vendor name")
 	fs.StringVar(&model, "model", "", "Model name")
@@ -184,7 +261,7 @@ func runRegulatoryLabelExtract(args []string) error {
 	fs.StringVar(&ocrPattern, "ocr-pattern", `\d{3}-\d{6}`, "Regex pattern for certification numbers")
 	fs.StringVar(&ocrLang, "ocr-lang", "eng", "OCR language (default: eng)")
 	fs.BoolVar(&ocrOptional, "ocr-optional", false, "Do not fail if OCR candidate extraction fails")
-	fs.BoolVar(&noOCR, "no-ocr", false, "Disable OCR candidate extraction")
+	fs.BoolVar(&noOCR, "no-ocr", true, "Disable OCR candidate extraction (default)")
 	fs.Var(&crops, "crop", "Crop specification in format role=WxH+X+Y")
 
 	if err := fs.Parse(args); err != nil {
@@ -197,11 +274,18 @@ func runRegulatoryLabelExtract(args []string) error {
 	if outDir == "" {
 		return errors.New("label extract: --out is required")
 	}
-	if layoutID == "" {
-		return errors.New("label extract: --layout-id is required")
+	if layoutPath != "" {
+		if layoutID != "" || len(crops) != 0 {
+			return errors.New("label extract: --layout cannot be combined with --layout-id or --crop")
+		}
+		loaded, loadedCrops, err := label.LoadLayout(layoutPath)
+		if err != nil {
+			return err
+		}
+		layoutID, crops = loaded.Metadata.Name, cropList(loadedCrops)
 	}
-	if len(crops) == 0 {
-		return errors.New("label extract: at least one --crop is required")
+	if layoutID == "" || len(crops) == 0 {
+		return errors.New("label extract: --layout is required")
 	}
 
 	var pattern *regexp.Regexp
@@ -320,6 +404,21 @@ func runRegulatory(args []string) error {
 		fmt.Println("OK")
 		return nil
 	}
+	if len(args) == 3 && args[0] == "profile" && args[1] == "check" {
+		p, err := profile.Read(args[2])
+		if err != nil {
+			return err
+		}
+		if err := profile.Validate(p); err != nil {
+			return err
+		}
+		if !p.TXPermitted() {
+			fmt.Println("VALID: TX DENIED (evidence is not verified)")
+			return nil
+		}
+		fmt.Println("VALID: TX may be evaluated against runtime hardware/driver constraints")
+		return nil
+	}
 	if len(args) == 2 && args[0] == "derive" {
 		record, err := regulatory.ReadRecord(args[1])
 		if err != nil {
@@ -343,7 +442,7 @@ func runRegulatory(args []string) error {
 		fmt.Print(text)
 		return nil
 	}
-	return errors.New("usage: routerctl regulatory import mic <document.pdf|document.txt> | validate <record.json> | derive <record.json> | explain <derived.json> <key> | label extract [flags] | label verify <bundle-dir>")
+	return errors.New("usage: routerctl regulatory import mic <document.pdf|document.txt> | validate <record.json> | derive <record.json> | explain <derived.json> <key> | profile check <profile.yaml> | label extract [flags] | label verify <bundle-dir>")
 }
 
 func printJSON(w io.Writer, v any) error {
@@ -368,6 +467,7 @@ Usage:
   routerctl regulatory validate <record.json>
   routerctl regulatory derive <record.json>
   routerctl regulatory explain <derived.json> <key>
-  routerctl regulatory label extract --image <image> --layout-id <layout-id> --out <dir> --crop <role=geometry>...
+  routerctl regulatory profile check <profile.yaml>
+  routerctl regulatory label extract --image <image> --layout <layout.yaml> --out <dir>
   routerctl regulatory label verify <bundle-dir>`)
 }

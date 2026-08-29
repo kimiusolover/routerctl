@@ -1,0 +1,88 @@
+apiVersion: routerctl.dev/device/v1alpha1
+kind: Hardware
+metadata:
+  device: tplink-archer-ax23v-v1
+spec:
+  platform:
+    soc: MT7621DAT
+    architecture: mipsel
+    verified: inherited
+  memory:
+    ramBytes: 134217728 # 128 MiB
+    verified: inherited
+  flash:
+    type: spi-nor
+    sizeBytes: 16777216 # 16 MiB
+    partitions:
+      - name: u-boot
+        offset: 0x000000
+        size: 0x040000
+        mutable: false
+      - name: firmware
+        offset: 0x040000
+        size: 0xf60000
+      - name: config
+        offset: 0xfa0000
+        size: 0x010000
+        mutable: false
+      - name: tplink
+        offset: 0xfb0000
+        size: 0x040000
+        mutable: false
+      - name: radio
+        offset: 0xff0000
+        size: 0x010000
+        mutable: false
+    verified: inherited
+  nvmem:
+    baseMac:
+      partition: config
+      offset: 0x000008
+      length: 6
+      verified: inherited
+    radioCalibration:
+      partition: radio
+      offset: 0x000000
+      length: 0x000e00
+      verified: inherited
+  ethernet:
+    switch: mt7621
+    wan:
+      type: dedicated-gmac
+      gmac: 1
+      phy: 0
+      macSource: config+0x8
+      macIncrement: 1
+      verified: article-reported
+    lan:
+      - logicalName: lan1
+        dsaPort: 1
+      - logicalName: lan2
+        dsaPort: 2
+      - logicalName: lan3
+        dsaPort: 3
+      - logicalName: lan4
+        dsaPort: 4
+    # The physical mapping is the AX23V overlay; do not replace it with AX23
+    # v1's port numbering when producing a DTS.
+    verified: article-reported
+  wifi:
+    driver: mt76
+    firmwarePackage: kmod-mt7915-firmware
+    bus: pcie
+    eeprom: radioCalibration
+    bands:
+      - index: 0
+        role: 2g
+        macIncrement: 0
+      - index: 1
+        role: 5g
+        macIncrement: -1
+        dfs: true
+    verified: inherited
+  gpio:
+    inherits: tplink-archer-ax23-v1
+    verified: false
+  buttons:
+    inherits: tplink-archer-ax23-v1
+    verified: false

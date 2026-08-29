@@ -1,0 +1,25 @@
+apiVersion: routerctl.dev/device/v1alpha1
+kind: HardwareOverlay
+metadata:
+  id: tplink-archer-ax23v-v1-ethernet-and-factory
+spec:
+  appliesTo: tplink-archer-ax23-v1
+  dts:
+    gmac1:
+      phyHandle: ethphy0
+    switchPorts:
+      lan1: 1
+      lan2: 2
+      lan3: 3
+      lan4: 4
+  factoryImage:
+    addSupportListEntry:
+      productName: Archer AX23V
+      productVersion: "1.0"
+      specialId: "4A500000"
+  evidence:
+    - source: https://www.setsuki.com/2025-10-30/ax23v-openwrt-compile/
+      claim: >-
+        The reported AX23V build changes gmac1 to ethphy0, moves LAN labels to
+        switch ports 1 through 4, and adds this safeloader support-list entry.
+      confidence: third-party-reported

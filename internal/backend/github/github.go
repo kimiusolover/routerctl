@@ -69,6 +69,12 @@ func New(config Config) (*Backend, error) {
 
 func (*Backend) Name() string { return "github" }
 
+// Build is deliberately unsupported: GitHub Releases stores already-built
+// artifacts and must never be used as a host build executor.
+func (*Backend) Build(context.Context, backend.BuildRequest) (backend.BuildResult, error) {
+	return backend.BuildResult{}, backend.ErrBuildUnsupported
+}
+
 // Resolve fetches the configured release and finds the asset named by
 // req.Target. Artifact.Path is the asset's direct download URL. GitHub's
 // optional asset digest is returned unchanged (normally sha256:<hex>).

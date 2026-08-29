@@ -12,6 +12,7 @@ changes inside it.
 | `profiles/<name>/` | target selection, config fragments, feeds, metadata | copied upstream code |
 | `patches/<name>/` | ordered `.patch` series applied after checkout | generated binaries |
 | `packaging/` | isolated build, artifact naming and checksums | product source forks |
+| `devices/<vendor>/<model>-<revision>/` | hardware identity, compatibility facts, and overlays | calibration or full MTD dumps |
 
 ## Profile contract
 

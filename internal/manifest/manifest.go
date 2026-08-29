@@ -1,104 +1,68 @@
 package manifest
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"os"
-	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Manifest intentionally starts small. The loader supports the simple YAML
 // subset used by the bootstrap manifests without introducing dependencies.
 type Manifest struct {
-	APIVersion string   `json:"apiVersion"`
-	Kind       string   `json:"kind"`
-	Metadata   Metadata `json:"metadata"`
-	Spec       Spec     `json:"spec"`
+	APIVersion string   `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string   `json:"kind" yaml:"kind"`
+	Metadata   Metadata `json:"metadata" yaml:"metadata"`
+	Spec       Spec     `json:"spec" yaml:"spec"`
 }
 
 type Metadata struct {
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 }
 
 type Spec struct {
-	Device    string `json:"device"`
-	Backend   string `json:"backend"`
-	Transport string `json:"transport"`
-	Target    string `json:"target"`
-	GitHub    GitHub `json:"github"`
+	Device    string   `json:"device" yaml:"device"`
+	Backend   string   `json:"backend" yaml:"backend"`
+	Transport string   `json:"transport" yaml:"transport"`
+	Target    string   `json:"target" yaml:"target"`
+	GitHub    GitHub   `json:"github" yaml:"github"`
+	Build     Build    `json:"build" yaml:"build"`
+	Artifact  Artifact `json:"artifact" yaml:"artifact"`
+}
+
+type Build struct {
+	Profile    string   `json:"profile" yaml:"profile"`
+	Repository string   `json:"repository" yaml:"repository"`
+	Command    []string `json:"command" yaml:"command"`
+	Output     string   `json:"output" yaml:"output"`
+}
+
+type Artifact struct {
+	Expected ArtifactExpected `json:"expected" yaml:"expected"`
+}
+
+type ArtifactExpected struct {
+	Device       string `json:"device" yaml:"device"`
+	Format       string `json:"format" yaml:"format"`
+	MaxSizeBytes int64  `json:"max_size_bytes" yaml:"max_size_bytes"`
+	BoardID      string `json:"board_id" yaml:"board_id"`
 }
 
 // GitHub configures the GitHub Releases backend. Tokens are never stored in a
 // manifest; the CLI reads GITHUB_TOKEN when it resolves a private release.
 type GitHub struct {
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
+	Repository string `json:"repository" yaml:"repository"`
+	Tag        string `json:"tag" yaml:"tag"`
 }
 
 func Load(path string) (Manifest, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return Manifest{}, err
 	}
-	defer f.Close()
-
 	var m Manifest
-	section := ""
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasSuffix(line, ":") {
-			section = strings.TrimSuffix(line, ":")
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			return Manifest{}, fmt.Errorf("unsupported manifest line: %q", line)
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
-
-		switch section {
-		case "":
-			switch key {
-			case "apiVersion":
-				m.APIVersion = val
-			case "kind":
-				m.Kind = val
-			}
-		case "metadata":
-			if key == "name" {
-				m.Metadata.Name = val
-			}
-		case "spec":
-			switch key {
-			case "device":
-				m.Spec.Device = val
-			case "backend":
-				m.Spec.Backend = val
-			case "transport":
-				m.Spec.Transport = val
-			case "target":
-				m.Spec.Target = val
-			}
-		case "github":
-			switch key {
-			case "repository":
-				m.Spec.GitHub.Repository = val
-			case "tag":
-				m.Spec.GitHub.Tag = val
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return Manifest{}, err
-	}
-	if m.APIVersion == "" {
-		return Manifest{}, errors.New("manifest: apiVersion is required")
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return Manifest{}, fmt.Errorf("manifest: parse YAML: %w", err)
 	}
 	return m, nil
 }

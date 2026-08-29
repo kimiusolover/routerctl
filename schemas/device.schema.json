@@ -26,8 +26,43 @@
             "repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
             "tag": {"type": "string"}
           }
+        },
+        "build": {
+          "type": "object",
+          "properties": {
+            "profile": {"type": "string", "minLength": 1},
+            "repository": {"type": "string", "minLength": 1},
+            "command": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "output": {"type": "string", "minLength": 1}
+          }
+        },
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "expected": {
+              "type": "object",
+              "properties": {
+                "device": {"type": "string", "minLength": 1},
+                "format": {"type": "string", "minLength": 1},
+                "max_size_bytes": {"type": "integer", "minimum": 1},
+                "board_id": {"type": "string"}
+              }
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"backend": {"const": "native"}}},
+          "then": {
+            "required": ["build", "artifact"],
+            "properties": {
+              "build": {"required": ["profile", "repository", "command", "output"]},
+              "artifact": {"required": ["expected"], "properties": {"expected": {"required": ["device", "format", "max_size_bytes"]}}}
+            }
+          }
+        }
+      ]
     }
   }
 }

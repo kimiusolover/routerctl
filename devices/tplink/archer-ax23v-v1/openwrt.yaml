@@ -1,0 +1,28 @@
+apiVersion: routerctl.dev/device/v1alpha1
+kind: OpenWrtCompatibility
+metadata:
+  device: tplink-archer-ax23v-v1
+spec:
+  target: ramips
+  subtarget: mt7621
+  baseProfile: tplink_archer-ax23-v1
+  baseDts: target/linux/ramips/dts/mt7621_tplink_archer-ax23-v1.dts
+  image:
+    format: tplink-safeloader
+    boardId: ARCHER-AX23-V1
+    imageSizeKiB: 15744
+  factoryIdentity:
+    productName: Archer AX23V
+    productVersion: "1.0"
+    # A TP-Link safeloader distribution identifier, not a regulatory-country
+    # setting. It must not be derived from the certification profile.
+    specialId: "4A500000"
+  knownIssues:
+    - id: upstream-ax23-post-23.05.4-boot-freeze
+      status: needs-ax23v-validation
+      description: >-
+        A boot-freeze report exists for some Archer AX23 hardware after
+        OpenWrt 23.05.4. It has not been established as an AX23V property.
+  provisioning:
+    initialAccess: wired-lan
+    wifiEnabledByDefault: false
