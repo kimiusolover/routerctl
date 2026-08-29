@@ -14,8 +14,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       # Image cropping and OCR integration tests invoke these tools directly.
@@ -26,7 +26,10 @@ jobs:
           sudo apt-get install -y imagemagick tesseract-ocr
       - name: Install image and OCR tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install imagemagick tesseract
+        run: |
+          # The hosted runner may include this unused tap in an untrusted state.
+          brew untap aws/tap || true
+          brew install imagemagick tesseract
       - name: Install image and OCR tools (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
