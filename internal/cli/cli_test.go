@@ -13,36 +13,24 @@ import (
 	"testing"
 )
 
-func TestInteractiveArgsBuildsManifestCommand(t *testing.T) {
+func TestInteractiveShellRunsCommandsUntilQuit(t *testing.T) {
 	var output bytes.Buffer
-	args, err := interactiveArgs(strings.NewReader("3\nexamples/device.yaml\n"), &output)
+	err := runInteractive(strings.NewReader("help\nverify examples/device.yaml\nquit\n"), &output, BuildInfo{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(args, " "), "verify examples/device.yaml"; got != want {
-		t.Fatalf("interactive args = %q, want %q", got, want)
+	if !strings.Contains(output.String(), "routerctl>") || !strings.Contains(output.String(), "Commands are the same") {
+		t.Fatalf("interactive output = %q", output.String())
 	}
 }
 
-func TestInteractiveArgsConfirmsGitMutation(t *testing.T) {
-	var output bytes.Buffer
-	args, err := interactiveArgs(strings.NewReader("8\n\nfeat: guided mode\ny\n"), &output)
+func TestSplitCommandLineSupportsQuotedArguments(t *testing.T) {
+	args, err := splitCommandLine(`git commit --message "feat: guided mode"`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(args, " "), "git commit --repo . --message feat: guided mode"; got != want {
-		t.Fatalf("interactive args = %q, want %q", got, want)
-	}
-}
-
-func TestInteractiveArgsCancelsGitMutation(t *testing.T) {
-	var output bytes.Buffer
-	args, err := interactiveArgs(strings.NewReader("9\n\n\nn\n"), &output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(args) != 0 {
-		t.Fatalf("interactive args = %#v, want cancellation", args)
+	if got, want := strings.Join(args, "|"), "git|commit|--message|feat: guided mode"; got != want {
+		t.Fatalf("split command = %q, want %q", got, want)
 	}
 }
 

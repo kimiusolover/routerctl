@@ -42,25 +42,11 @@ type BuildInfo struct {
 
 func Run(args []string, info BuildInfo) error {
 	if len(args) > 0 && (args[0] == "interactive" || args[0] == "--interactive" || args[0] == "-i") {
-		var err error
-		args, err = interactiveArgs(os.Stdin, os.Stdout)
-		if err != nil {
-			return err
-		}
-		if len(args) == 0 {
-			return nil
-		}
+		return runInteractive(os.Stdin, os.Stdout, info)
 	}
 	if len(args) == 0 {
 		if isTerminal(os.Stdin) {
-			selected, err := interactiveArgs(os.Stdin, os.Stdout)
-			if err != nil {
-				return err
-			}
-			if len(selected) > 0 {
-				return Run(selected, info)
-			}
-			return nil
+			return runInteractive(os.Stdin, os.Stdout, info)
 		}
 		nextSteps(os.Stdout)
 		return nil
@@ -168,108 +154,193 @@ func isTerminal(file *os.File) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-// interactiveArgs turns the complete command surface into a guided flow while
-// keeping the regular positional/flag interface stable for scripts and CI.
-func interactiveArgs(in io.Reader, out io.Writer) ([]string, error) {
+// runInteractive is a REPL: commands may be entered repeatedly, as in parted.
+// Commands with omitted required parameters ask only for those parameters.
+func runInteractive(in io.Reader, out io.Writer, info BuildInfo) error {
 	reader := bufio.NewReader(in)
 	fmt.Fprintln(out, "routerctl interactive mode")
-	fmt.Fprintln(out, "Choose an action:")
-	actions := []string{
-		"inspect a manifest", "plan a manifest", "verify a manifest", "resolve a release artifact", "build firmware",
-		"verify release metadata", "git status", "git commit", "git sync", "import MIC document", "validate regulatory record",
-		"derive regulatory constraints", "explain a derived constraint", "check certification profile", "extract label evidence",
-		"verify label evidence", "create evidence bundle", "show version",
-		"import MIC document from an evidence bundle",
-	}
-	for i, action := range actions {
-		fmt.Fprintf(out, "  %d. %s\n", i+1, action)
-	}
-	choice, err := promptRequired(reader, out, "Action number (blank to cancel)")
-	if err != nil {
+	fmt.Fprintln(out, "Enter `help` for commands, or `quit` to exit.")
+	for {
+		fmt.Fprint(out, "routerctl> ")
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" && errors.Is(err, io.EOF) {
+			return nil
+		}
+		if line == "" {
+			continue
+		}
+		args, parseErr := splitCommandLine(line)
+		if parseErr != nil {
+			fmt.Fprintf(out, "routerctl: %v\n", parseErr)
+			continue
+		}
+		switch args[0] {
+		case "quit", "exit":
+			return nil
+		case "help", "?":
+			interactiveUsage(out)
+			continue
+		}
+		args, err = fillInteractiveArgs(reader, out, args)
+		if err != nil {
+			fmt.Fprintf(out, "routerctl: %v\n", err)
+			continue
+		}
+		if len(args) == 0 {
+			continue
+		}
+		if len(args) >= 2 && args[0] == "git" && (args[1] == "commit" || args[1] == "sync") {
+			answer, confirmErr := promptDefault(reader, out, "Proceed with Git changes? [y/N]", "n")
+			if confirmErr != nil {
+				return confirmErr
+			}
+			if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
+				continue
+			}
+		}
+		if commandErr := Run(args, info); commandErr != nil {
+			fmt.Fprintf(out, "routerctl: %v\n", commandErr)
+		}
 		if errors.Is(err, io.EOF) {
-			return nil, nil
+			return nil
 		}
-		return nil, err
-	}
-	switch choice {
-	case "1", "2", "3", "4", "5":
-		path, err := promptRequired(reader, out, "Manifest path")
-		if err != nil {
-			return nil, err
-		}
-		return []string{map[string]string{"1": "inspect", "2": "plan", "3": "verify", "4": "resolve", "5": "build"}[choice], path}, nil
-	case "6":
-		return promptArgs(reader, out, []string{"verify-release", "Manifest JSON path", "SHA256SUMS path", "Provenance JSON path"})
-	case "7", "8", "9":
-		return interactiveGitArgs(reader, out, choice)
-	case "10":
-		return promptArgs(reader, out, []string{"regulatory", "import", "mic", "MIC document path"})
-	case "11":
-		return promptArgs(reader, out, []string{"regulatory", "validate", "Certification record path"})
-	case "12":
-		return promptArgs(reader, out, []string{"regulatory", "derive", "Certification record path"})
-	case "13":
-		return promptArgs(reader, out, []string{"regulatory", "explain", "Derived constraints path", "Constraint key"})
-	case "14":
-		return promptArgs(reader, out, []string{"regulatory", "profile", "check", "Certification profile path"})
-	case "15":
-		return interactiveLabelExtractArgs(reader, out)
-	case "16":
-		return promptArgs(reader, out, []string{"regulatory", "label", "verify", "Label evidence bundle directory"})
-	case "17":
-		return interactiveBundleArgs(reader, out)
-	case "18":
-		return []string{"version"}, nil
-	case "19":
-		bundle, err := promptRequired(reader, out, "Evidence bundle path")
-		if err != nil {
-			return nil, err
-		}
-		return []string{"regulatory", "import", "mic", "--bundle", bundle}, nil
-	default:
-		return nil, fmt.Errorf("invalid action number %q", choice)
 	}
 }
 
-func promptArgs(reader *bufio.Reader, out io.Writer, values []string) ([]string, error) {
-	args := make([]string, 0, len(values))
-	for _, value := range values {
-		if strings.HasPrefix(value, "-") || value == "regulatory" || value == "import" || value == "mic" || value == "profile" || value == "check" || value == "label" || value == "verify" || value == "verify-release" || value == "validate" || value == "derive" || value == "explain" {
+func interactiveUsage(out io.Writer) {
+	fprintln := func(s string) { fmt.Fprintln(out, s) }
+	fprintln("Commands are the same as the normal CLI. Examples:")
+	fprintln("  inspect [manifest]        plan [manifest]        verify [manifest]")
+	fprintln("  resolve [manifest]        build [manifest]")
+	fprintln("  verify-release [manifest.json] [SHA256SUMS] [provenance.json]")
+	fprintln("  git [status|commit|sync] [--repo PATH] [--message TEXT] [--dry-run]")
+	fprintln("  regulatory import mic [document] | regulatory validate [record]")
+	fprintln("  regulatory derive [record] | regulatory explain [derived] [key]")
+	fprintln("  regulatory profile check [profile] | regulatory label extract [flags]")
+	fprintln("  regulatory label verify [bundle-dir] | regulatory bundle create [flags]")
+	fprintln("  version                    quit")
+}
+
+func fillInteractiveArgs(reader *bufio.Reader, out io.Writer, args []string) ([]string, error) {
+	if len(args) == 0 {
+		return args, nil
+	}
+	switch args[0] {
+	case "inspect", "plan", "verify", "resolve", "build":
+		if len(args) == 1 {
+			value, err := promptRequired(reader, out, "Manifest path")
+			return append(args, value), err
+		}
+	case "verify-release":
+		for _, label := range []string{"Manifest JSON path", "SHA256SUMS path", "Provenance JSON path"} {
+			if len(args) == 4 {
+				break
+			}
+			value, err := promptRequired(reader, out, label)
+			if err != nil {
+				return nil, err
+			}
 			args = append(args, value)
-			continue
 		}
-		answer, err := promptRequired(reader, out, value)
-		if err != nil {
-			return nil, err
+	case "git":
+		if len(args) == 1 {
+			value, err := promptRequired(reader, out, "Git command (status, commit, sync)")
+			return append(args, value), err
 		}
-		args = append(args, answer)
+	case "regulatory":
+		return fillRegulatoryArgs(reader, out, args)
 	}
 	return args, nil
 }
 
-func interactiveGitArgs(reader *bufio.Reader, out io.Writer, choice string) ([]string, error) {
-	command := map[string]string{"7": "status", "8": "commit", "9": "sync"}[choice]
-	repo, err := promptDefault(reader, out, "Repository path", ".")
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"git", command, "--repo", repo}
-	if command == "status" {
+func fillRegulatoryArgs(reader *bufio.Reader, out io.Writer, args []string) ([]string, error) {
+	if len(args) == 1 {
 		return args, nil
 	}
-	message, err := promptDefault(reader, out, "Commit message (blank to generate)", "")
-	if err != nil {
-		return nil, err
+	if len(args) == 3 && args[1] == "import" && args[2] == "mic" {
+		value, err := promptRequired(reader, out, "MIC document path (or use --bundle PATH)")
+		return append(args, value), err
 	}
-	if message != "" {
-		args = append(args, "--message", message)
+	if len(args) == 2 && (args[1] == "validate" || args[1] == "derive") {
+		value, err := promptRequired(reader, out, "Certification record path")
+		return append(args, value), err
 	}
-	confirm, err := promptDefault(reader, out, "Proceed with Git changes? [y/N]", "n")
-	if err != nil {
-		return nil, err
+	if len(args) == 2 && args[1] == "explain" {
+		derived, err := promptRequired(reader, out, "Derived constraints path")
+		if err != nil {
+			return nil, err
+		}
+		key, err := promptRequired(reader, out, "Constraint key")
+		return append(args, derived, key), err
 	}
-	if !strings.EqualFold(confirm, "y") && !strings.EqualFold(confirm, "yes") {
-		return nil, nil
+	if len(args) == 3 && args[1] == "profile" && args[2] == "check" {
+		value, err := promptRequired(reader, out, "Certification profile path")
+		return append(args, value), err
+	}
+	if len(args) == 3 && args[1] == "label" && args[2] == "extract" {
+		return interactiveLabelExtractArgs(reader, out)
+	}
+	if len(args) == 3 && args[1] == "label" && args[2] == "verify" {
+		value, err := promptRequired(reader, out, "Label evidence bundle directory")
+		return append(args, value), err
+	}
+	if len(args) == 3 && args[1] == "bundle" && args[2] == "create" {
+		return interactiveBundleArgs(reader, out)
+	}
+	return args, nil
+}
+
+func splitCommandLine(line string) ([]string, error) {
+	var args []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	for _, r := range line {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if r == ' ' || r == '\t' {
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if escaped {
+		return nil, errors.New("unfinished escape")
+	}
+	if quote != 0 {
+		return nil, errors.New("unterminated quote")
+	}
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+	if len(args) == 0 {
+		return nil, errors.New("empty command")
 	}
 	return args, nil
 }

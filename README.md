@@ -52,9 +52,19 @@ routerctl interactive
 # or: routerctl --interactive
 ```
 
-The guided flow covers every command, asks for the required paths and values,
-and asks for a final confirmation before a Git commit or sync. The ordinary
-command forms below remain available for scripts and CI.
+The interactive shell keeps running after each command, like `parted`:
+
+```text
+routerctl> verify examples/ax23v/device.yaml
+routerctl> plan
+Manifest path: examples/ax23v/device.yaml
+routerctl> help
+routerctl> quit
+```
+
+It asks for omitted required values and asks for a final confirmation before a
+Git commit or sync. The ordinary command forms below remain available for
+scripts and CI.
 
 ```sh
 go run ./cmd/routerctl version
