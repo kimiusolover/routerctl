@@ -17,6 +17,7 @@ import (
 	githubbackend "github.com/example/routerctl/internal/backend/github"
 	nativebackend "github.com/example/routerctl/internal/backend/native"
 	"github.com/example/routerctl/internal/firmwaregate"
+	"github.com/example/routerctl/internal/gitops"
 	"github.com/example/routerctl/internal/manifest"
 	"github.com/example/routerctl/internal/planner"
 	"github.com/example/routerctl/internal/regulatory"
@@ -44,6 +45,8 @@ func Run(args []string, info BuildInfo) error {
 	}
 
 	switch args[0] {
+	case "git":
+		return runGit(args[1:])
 	case "build":
 		if len(args) != 2 {
 			return errors.New("usage: routerctl build <manifest>")
@@ -135,6 +138,56 @@ func Run(args []string, info BuildInfo) error {
 		return nil
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
+	}
+}
+
+func runGit(args []string) error {
+	fs := flag.NewFlagSet("git", flag.ContinueOnError)
+	repository := fs.String("repo", ".", "Git repository path")
+	message := fs.String("message", "", "Commit message (generated when empty)")
+	dryRun := fs.Bool("dry-run", false, "Show the generated commit message without changing Git")
+	if len(args) == 0 {
+		return errors.New("usage: routerctl git status|commit|sync [--repo <path>] [--message <message>] [--dry-run]")
+	}
+	command := args[0]
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	options := gitops.Options{Repository: *repository, Message: *message, DryRun: *dryRun}
+	switch command {
+	case "status":
+		if *message != "" || *dryRun {
+			return errors.New("git status: --message and --dry-run are not supported")
+		}
+		status, err := gitops.StatusAt(*repository)
+		if err != nil {
+			return err
+		}
+		return printJSON(os.Stdout, status)
+	case "commit":
+		commitMessage, err := gitops.Commit(options)
+		if err != nil {
+			return err
+		}
+		if commitMessage == "" {
+			fmt.Println("clean")
+		} else {
+			fmt.Println(commitMessage)
+		}
+		return nil
+	case "sync":
+		commitMessage, err := gitops.Sync(options)
+		if err != nil {
+			return err
+		}
+		if commitMessage == "" {
+			fmt.Println("synced (no local changes)")
+		} else {
+			fmt.Printf("synced: %s\n", commitMessage)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown git command %q", command)
 	}
 }
 
@@ -456,6 +509,9 @@ func usage(w io.Writer) {
 
 Usage:
   routerctl version
+	  routerctl git status [--repo <path>]
+	  routerctl git commit [--repo <path>] [--message <message>] [--dry-run]
+	  routerctl git sync [--repo <path>] [--message <message>] [--dry-run]
   routerctl inspect <manifest>
   routerctl plan <manifest>
   routerctl verify <manifest>

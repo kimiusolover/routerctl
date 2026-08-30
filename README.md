@@ -102,6 +102,31 @@ routerctl regulatory profile check examples/ax23v/regulatory/JP/certification-pr
 Backends and transports are interfaces so the core does not depend on a
 specific host operating system, firmware repository, or deployment mechanism.
 
+## Local Git workflow
+
+`routerctl git` keeps local commits and pushes repeatable without granting the
+tool permission to rewrite history. It generates a conservative Conventional
+Commit message from changed paths; supply `--message` whenever a more specific
+message is needed.
+
+```sh
+# Inspect the current checkout.
+routerctl git status
+
+# Preview the generated message. No files are staged or committed.
+routerctl git commit --dry-run
+
+# Stage local changes and create one commit.
+routerctl git commit
+
+# Commit if needed, pull with rebase, then make a normal push.
+routerctl git sync
+```
+
+`sync` requires an upstream branch and stops if rebase conflicts occur. It
+never runs `push --force`, `reset`, or `commit --amend`; paths that look like
+private keys, credentials, secrets, or `.env` files are refused before staging.
+
 ## Workspace context
 
 Workspace discovery is deliberately independent from Git discovery. A
