@@ -43,6 +43,10 @@ type Certification struct {
 type NumberSource struct {
 	Type         string `json:"type"`
 	URL          string `json:"url"`
+	Retrieval    string `json:"retrieval"`
+	CheckedAt    string `json:"checkedAt"`
+	CheckedBy    string `json:"checkedBy"`
+	MatchStatus  string `json:"matchStatus"`
 	EvidenceFile string `json:"evidenceFile"`
 	SHA256       string `json:"sha256"`
 }

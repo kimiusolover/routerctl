@@ -13,8 +13,17 @@ func record(meaning string) *model.CertificationRecord {
 	return &model.CertificationRecord{
 		APIVersion: model.APIVersion, Kind: "CertificationRecord", Jurisdiction: "JP",
 		Device:        model.Device{Vendor: "TP-Link", Model: "Archer AX23V", Revision: "v1"},
-		Certification: model.Certification{Authority: "MIC", Number: "201-test", Source: model.Source{Document: "report.pdf", SHA256: sourceSHA}},
+		Certification: model.Certification{Authority: "MIC", Number: "201-test", NumberSource: model.NumberSource{Type: "official_search", MatchStatus: "confirmed"}, Source: model.Source{Document: "report.pdf", SHA256: sourceSHA}},
 		Radios:        []model.Radio{{Band: "5GHz", Frequency: model.Frequency{MinMHz: 5180, MaxMHz: 5240}, TXPower: &model.Value{Value: 17, Unit: "dBm", Meaning: meaning}, Evidence: model.Evidence{Document: "report.pdf", Page: 23, Table: "RF Output Power"}, Confidence: "verified"}},
+	}
+}
+
+func TestConstraintsRefusesUnconfirmedSearchMatch(t *testing.T) {
+	r := record(model.MeaningCertifiedMax)
+	r.Certification.NumberSource.MatchStatus = "unconfirmed"
+	_, err := Constraints(r)
+	if err == nil || !strings.Contains(err.Error(), "unconfirmed") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

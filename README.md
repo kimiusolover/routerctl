@@ -127,6 +127,26 @@ routerctl git sync
 never runs `push --force`, `reset`, or `commit --amend`; paths that look like
 private keys, credentials, secrets, or `.env` files are refused before staging.
 
+## Install
+
+Install the CLI into your user-local binary directory, then invoke it from any
+directory as `routerctl`:
+
+```sh
+make install
+routerctl version
+```
+
+The default destination is `~/.local/bin`. If that directory is not on your
+shell `PATH`, add this line to the relevant shell startup file and open a new
+terminal:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+For a different user-local prefix, use `make install PREFIX=/your/prefix`.
+
 ## Workspace context
 
 Workspace discovery is deliberately independent from Git discovery. A

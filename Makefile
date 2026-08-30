@@ -1,11 +1,22 @@
 BINARY := routerctl
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
 
-.PHONY: all build test vet fmt check clean layer-check layer-build
+.PHONY: all build install uninstall test vet fmt check clean layer-check layer-build
 
 all: check build
 
 build:
 	go build -trimpath -o bin/$(BINARY) ./cmd/routerctl
+
+# Install only into the current user's prefix by default. Override PREFIX for
+# packaging; never require sudo for normal local use.
+install: build
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 755 bin/$(BINARY) $(DESTDIR)$(BINDIR)/$(BINARY)
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/$(BINARY)
 
 test:
 	go test ./...

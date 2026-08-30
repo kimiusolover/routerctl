@@ -11,6 +11,10 @@ certificationNumber: "201-230283"
 numberSource:
   type: official_search
   url: "https://www.tele.soumu.go.jp/giteki/SearchServlet?pageID=js01"
+  retrieval: manual
+  checkedAt: "2026-08-30T00:00:00Z"
+  checkedBy: synthetic-fixture
+  matchStatus: unconfirmed
   evidenceFile: number-source-201-230283.txt
   sha256: 436706692317124ba2a480617c6b73840c647ecf7535bc7cb54b692b70a34a86
 documents:

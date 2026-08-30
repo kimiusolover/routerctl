@@ -30,3 +30,30 @@ func TestReadBundleRejectsAlteredEvidence(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestReadBundleRejectsOfficialSearchWithoutManualCheckMetadata(t *testing.T) {
+	dir := t.TempDir()
+	fixtureDir := filepath.Join("..", "..", "examples", "ax23v", "regulatory", "JP")
+	for _, name := range []string{"number-source-201-230283.txt", "mic-report.txt"} {
+		data, err := os.ReadFile(filepath.Join(fixtureDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bundle, err := os.ReadFile(filepath.Join(fixtureDir, "evidence-bundle.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle = []byte(strings.Replace(string(bundle), "  checkedBy: synthetic-fixture\n", "", 1))
+	path := filepath.Join(dir, "evidence-bundle.yaml")
+	if err := os.WriteFile(path, bundle, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ReadBundle(path)
+	if err == nil || !strings.Contains(err.Error(), "checkedBy") {
+		t.Fatalf("error = %v", err)
+	}
+}

@@ -22,6 +22,9 @@ func Record(record *model.CertificationRecord) error {
 	if record.Jurisdiction == "" || record.Certification.Authority == "" || record.Certification.Number == "" {
 		return fmt.Errorf("regulatory record: jurisdiction and certification authority/number are required")
 	}
+	if record.Certification.NumberSource.Type == "official_search" && record.Certification.NumberSource.MatchStatus != "confirmed" {
+		return fmt.Errorf("regulatory record: unconfirmed or mismatched certification search cannot derive constraints")
+	}
 	if record.Certification.Source.Document == "" || len(record.Certification.Source.SHA256) != 64 {
 		return fmt.Errorf("regulatory record: source document and SHA-256 are required")
 	}

@@ -8,8 +8,66 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestFindDeviceManifests(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "devices", "test.yaml")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, []byte(`apiVersion: routerctl.dev/v1alpha1
+kind: Device
+metadata: {name: test-router}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "other.yaml"), []byte(`apiVersion: routerctl.dev/device/v1alpha1
+kind: HardwareDevice
+metadata: {name: not-a-manifest}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ignoredPath := filepath.Join(root, "packaging", "arch", "device.yaml")
+	if err := os.MkdirAll(filepath.Dir(ignoredPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ignoredPath, []byte(`apiVersion: routerctl.dev/v1alpha1
+kind: Device
+metadata: {name: packaged-copy}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := findDeviceManifests(root)
+	if len(candidates) != 1 {
+		t.Fatalf("findDeviceManifests() found %d candidates, want 1: %#v", len(candidates), candidates)
+	}
+	if candidates[0].Path != filepath.Join("devices", "test.yaml") || candidates[0].Name != "test-router" {
+		t.Fatalf("unexpected candidate: %#v", candidates[0])
+	}
+}
+
+func TestNextStepsShowsCandidatesAndNextCommand(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "example.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`apiVersion: routerctl.dev/v1alpha1
+kind: Device
+metadata: {name: test-router}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	nextStepsAt(&output, root)
+	if !strings.Contains(output.String(), "routerctl: start by checking a device manifest.") {
+		t.Fatalf("nextSteps() did not provide an entry point: %s", output.String())
+	}
+	if !strings.Contains(output.String(), "example.yaml (test-router)") || !strings.Contains(output.String(), "routerctl verify example.yaml") {
+		t.Fatalf("nextSteps() did not suggest verification: %s", output.String())
+	}
+}
 
 func TestResolveRejectsGitHubManifestWithoutRepository(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "device.yaml")

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/example/routerctl/internal/artifactverify"
@@ -40,7 +41,7 @@ type BuildInfo struct {
 
 func Run(args []string, info BuildInfo) error {
 	if len(args) == 0 {
-		usage(os.Stdout)
+		nextSteps(os.Stdout)
 		return nil
 	}
 
@@ -393,12 +394,12 @@ func runRegulatory(args []string) error {
 		fmt.Println("OK")
 		return nil
 	}
-	if len(args) == 18 && args[0] == "bundle" && args[1] == "create" {
+	if len(args) == 22 && args[0] == "bundle" && args[1] == "create" {
 		values := map[string]string{}
 		for i := 2; i < len(args); i += 2 {
 			values[args[i]] = args[i+1]
 		}
-		bundle, err := regulatory.CreateBundle(values["--authority"], values["--number"], values["--source-url"], values["--number-evidence"], values["--report"], values["--vendor"], values["--model"], values["--revision"])
+		bundle, err := regulatory.CreateBundle(values["--authority"], values["--number"], values["--source-url"], values["--checked-at"], values["--checked-by"], values["--number-evidence"], values["--report"], values["--vendor"], values["--model"], values["--revision"])
 		if err != nil {
 			return err
 		}
@@ -519,11 +520,94 @@ Usage:
   routerctl verify-release <manifest.json> <SHA256SUMS> <provenance.json>
   routerctl regulatory import mic <document.pdf|document.txt>
   routerctl regulatory import mic --bundle <bundle.json>
-  routerctl regulatory bundle create --authority MIC --number <number> --source-url <url> --number-evidence <file> --report <file> --vendor <vendor> --model <model> --revision <revision>
+  routerctl regulatory bundle create --authority MIC --number <number> --source-url <exact-url> --checked-at <RFC3339> --checked-by <reviewer> --number-evidence <file> --report <file> --vendor <vendor> --model <model> --revision <revision>
   routerctl regulatory validate <record.json>
   routerctl regulatory derive <record.json>
   routerctl regulatory explain <derived.json> <key>
   routerctl regulatory profile check <profile.yaml>
   routerctl regulatory label extract --image <image> --layout <layout.yaml> --out <dir>
   routerctl regulatory label verify <bundle-dir>`)
+}
+
+const maxManifestCandidates = 8
+
+// nextSteps is the compact, task-oriented entry point shown when routerctl is
+// invoked without a command. It deliberately only suggests routerctl Device
+// manifests, rather than every YAML file in a workspace.
+func nextSteps(w io.Writer) {
+	root, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(w, "routerctl: choose a device manifest, then verify it:")
+		fmt.Fprintln(w, "  routerctl verify <manifest>")
+		return
+	}
+	nextStepsAt(w, root)
+}
+
+func nextStepsAt(w io.Writer, root string) {
+	candidates := findDeviceManifests(root)
+	fmt.Fprintln(w, "routerctl: start by checking a device manifest.")
+	if len(candidates) == 0 {
+		fmt.Fprintln(w, "No device manifests found below the current directory.")
+		fmt.Fprintln(w, "  routerctl verify <manifest>")
+		fmt.Fprintln(w, "  routerctl plan <manifest>")
+		fmt.Fprintln(w, "Run `routerctl --help` to see every command.")
+		return
+	}
+
+	fmt.Fprintln(w, "Device manifest candidates:")
+	for _, candidate := range candidates {
+		fmt.Fprintf(w, "  %s (%s)\n", candidate.Path, candidate.Name)
+	}
+	first := candidates[0].Path
+	fmt.Fprintln(w, "Next:")
+	fmt.Fprintf(w, "  routerctl verify %s\n", first)
+	fmt.Fprintf(w, "  routerctl plan %s\n", first)
+	fmt.Fprintln(w, "Run `routerctl --help` to see every command.")
+}
+
+type manifestCandidate struct {
+	Path string
+	Name string
+}
+
+func findDeviceManifests(root string) []manifestCandidate {
+	var candidates []manifestCandidate
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			if path != root && ignoredManifestDirectory(entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		extension := strings.ToLower(filepath.Ext(path))
+		if extension != ".yaml" && extension != ".yml" {
+			return nil
+		}
+		m, loadErr := manifest.Load(path)
+		if loadErr != nil || m.APIVersion != "routerctl.dev/v1alpha1" || m.Kind != "Device" {
+			return nil
+		}
+		relativePath, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		candidates = append(candidates, manifestCandidate{Path: relativePath, Name: m.Metadata.Name})
+		return nil
+	})
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Path < candidates[j].Path })
+	if len(candidates) > maxManifestCandidates {
+		return candidates[:maxManifestCandidates]
+	}
+	return candidates
+}
+
+func ignoredManifestDirectory(name string) bool {
+	return strings.HasPrefix(name, ".") || name == "packaging" || name == "vendor" || name == "node_modules"
 }

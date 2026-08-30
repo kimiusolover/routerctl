@@ -4,3 +4,9 @@ dist/
 /objsource
 *.exe
 .DS_Store
+
+# Arch package build artifacts and the temporary source checkout.
+/packaging/arch/pkg/
+/packaging/arch/src/
+/packaging/arch/routerctl/
+/packaging/arch/*.pkg.tar.*

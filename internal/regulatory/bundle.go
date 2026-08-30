@@ -41,8 +41,11 @@ func ReadBundle(file string) (*EvidenceBundle, error) {
 			return nil, fmt.Errorf("regulatory bundle: parse JSON or YAML: %w", err)
 		}
 	}
-	if bundle.APIVersion != EvidenceBundleAPIVersion || bundle.Device.Vendor == "" || bundle.Device.Model == "" || bundle.Device.Revision == "" || bundle.Jurisdiction == "" || bundle.Authority == "" || bundle.CertificationNumber == "" || bundle.NumberSource.EvidenceFile == "" || len(bundle.Documents) == 0 {
+	if bundle.APIVersion != EvidenceBundleAPIVersion || bundle.Device.Vendor == "" || bundle.Device.Model == "" || bundle.Device.Revision == "" || bundle.Jurisdiction == "" || bundle.Authority == "" || bundle.CertificationNumber == "" || bundle.NumberSource.URL == "" || bundle.NumberSource.EvidenceFile == "" || len(bundle.Documents) == 0 {
 		return nil, fmt.Errorf("regulatory bundle: missing required evidence")
+	}
+	if bundle.NumberSource.Type == "official_search" && (bundle.NumberSource.Retrieval != "manual" || bundle.NumberSource.CheckedAt == "" || bundle.NumberSource.CheckedBy == "" || !validMatchStatus(bundle.NumberSource.MatchStatus)) {
+		return nil, fmt.Errorf("regulatory bundle: official_search requires manual retrieval, checkedAt, checkedBy, and valid matchStatus")
 	}
 	base := filepath.Dir(file)
 	if err := verifyFile(filepath.Join(base, bundle.NumberSource.EvidenceFile), bundle.NumberSource.SHA256); err != nil {
@@ -61,7 +64,7 @@ func ReadBundle(file string) (*EvidenceBundle, error) {
 
 // CreateBundle hashes only files the operator selected locally; it never
 // searches an authority site or fabricates a certification number.
-func CreateBundle(authority, number, sourceURL, evidenceFile, report, vendor, deviceModel, revision string) (*EvidenceBundle, error) {
+func CreateBundle(authority, number, sourceURL, checkedAt, checkedBy, evidenceFile, report, vendor, deviceModel, revision string) (*EvidenceBundle, error) {
 	evidenceHash, err := fileSHA256(evidenceFile)
 	if err != nil {
 		return nil, err
@@ -71,7 +74,7 @@ func CreateBundle(authority, number, sourceURL, evidenceFile, report, vendor, de
 		return nil, err
 	}
 	return &EvidenceBundle{APIVersion: EvidenceBundleAPIVersion, Device: model.Device{Vendor: vendor, Model: deviceModel, Revision: revision}, Jurisdiction: "JP", Authority: authority, CertificationNumber: number,
-		NumberSource: model.NumberSource{Type: "official_search", URL: sourceURL, EvidenceFile: filepath.Base(evidenceFile), SHA256: evidenceHash},
+		NumberSource: model.NumberSource{Type: "official_search", URL: sourceURL, Retrieval: "manual", CheckedAt: checkedAt, CheckedBy: checkedBy, MatchStatus: "unconfirmed", EvidenceFile: filepath.Base(evidenceFile), SHA256: evidenceHash},
 		Documents:    []BundleDocument{{Role: "test_report", File: filepath.Base(report), SHA256: reportHash}}}, nil
 }
 func fileSHA256(file string) (string, error) {
@@ -126,6 +129,14 @@ func parseBundleYAML(text string) (EvidenceBundle, error) {
 				b.NumberSource.Type = value
 			case "url":
 				b.NumberSource.URL = value
+			case "retrieval":
+				b.NumberSource.Retrieval = value
+			case "checkedAt":
+				b.NumberSource.CheckedAt = value
+			case "checkedBy":
+				b.NumberSource.CheckedBy = value
+			case "matchStatus":
+				b.NumberSource.MatchStatus = value
 			case "evidenceFile":
 				b.NumberSource.EvidenceFile = value
 			case "sha256":
@@ -167,6 +178,9 @@ func parseBundleYAML(text string) (EvidenceBundle, error) {
 		}
 	}
 	return b, nil
+}
+func validMatchStatus(value string) bool {
+	return value == "unconfirmed" || value == "confirmed" || value == "mismatch"
 }
 func verifyFile(file, want string) error {
 	b, err := os.ReadFile(file)
