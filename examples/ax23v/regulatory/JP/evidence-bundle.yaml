@@ -1,0 +1,19 @@
+# SYNTHETIC TEST FIXTURE ONLY. Replace every value and local evidence file with
+# operator-obtained official material before using this workflow for a device.
+apiVersion: routerctl.regulatory.evidence-bundle/v1
+device:
+  vendor: TP-Link
+  model: Archer AX23V
+  revision: v1
+jurisdiction: JP
+authority: MIC
+certificationNumber: "201-230283"
+numberSource:
+  type: official_search
+  url: "https://www.tele.soumu.go.jp/giteki/SearchServlet?pageID=js01"
+  evidenceFile: number-source-201-230283.txt
+  sha256: 436706692317124ba2a480617c6b73840c647ecf7535bc7cb54b692b70a34a86
+documents:
+  - role: test_report
+    file: mic-report.txt
+    sha256: 1131960206c03acc1f06c004788507b9ffd47bc5356c1be150b7645c6bb02bcb

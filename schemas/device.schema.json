@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://routerctl.dev/schemas/device.schema.json",
+  "title": "routerctl Device",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {"const": "routerctl.dev/v1alpha1"},
+    "kind": {"const": "Device"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {"name": {"type": "string", "minLength": 1}}
+    },
+    "spec": {
+      "type": "object",
+      "required": ["device", "backend", "transport"],
+      "properties": {
+        "device": {"type": "string", "minLength": 1},
+        "backend": {"enum": ["github", "oci", "native", "mock"]},
+        "transport": {"enum": ["ssh", "https", "serial"]},
+        "target": {"type": "string"},
+        "github": {
+          "type": "object",
+          "properties": {
+            "repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
+            "tag": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

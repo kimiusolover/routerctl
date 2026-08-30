@@ -1,0 +1,12 @@
+{
+  "components": [
+    {
+      "name": "routerctl",
+      "root": "."
+    },
+    {
+      "name": "firmware",
+      "root": "upstream/firmware"
+    }
+  ]
+}

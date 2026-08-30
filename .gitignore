@@ -1,0 +1,6 @@
+bin/
+dist/
+/routerctl
+/objsource
+*.exe
+.DS_Store
