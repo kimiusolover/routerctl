@@ -69,6 +69,10 @@ asks for omitted required values and asks for a final confirmation before a Git
 commit or sync. The ordinary command forms below remain available for scripts
 and CI.
 
+In the interactive shell, Backspace deletes the preceding character, Left and
+Right move the insertion point, Up recalls prior commands, and Down clears the
+current input line.
+
 ```sh
 go run ./cmd/routerctl version
 go run ./cmd/routerctl inspect examples/ax23v/device.yaml

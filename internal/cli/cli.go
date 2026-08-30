@@ -225,6 +225,7 @@ func executeInteractiveLine(reader *bufio.Reader, out io.Writer, line string, in
 
 func runInteractiveTerminal(in *os.File, out io.Writer, info BuildInfo) error {
 	reader := bufio.NewReader(in)
+	history := []string{}
 	fmt.Fprintln(out, "routerctl interactive mode")
 	fmt.Fprintln(out, "Enter `help` for commands, Tab to complete, or `quit` / Ctrl+D to exit.")
 	for {
@@ -232,7 +233,7 @@ func runInteractiveTerminal(in *os.File, out io.Writer, info BuildInfo) error {
 		if err != nil {
 			return err
 		}
-		line, readErr := readInteractiveLine(reader, out)
+		line, readErr := readInteractiveLine(reader, out, history)
 		if restoreErr := term.Restore(int(in.Fd()), state); restoreErr != nil {
 			return restoreErr
 		}
@@ -242,6 +243,9 @@ func runInteractiveTerminal(in *os.File, out io.Writer, info BuildInfo) error {
 				return nil
 			}
 			return readErr
+		}
+		if strings.TrimSpace(line) != "" {
+			history = append(history, line)
 		}
 		quit, err := executeInteractiveLine(reader, out, line, info)
 		if err != nil {
@@ -253,8 +257,10 @@ func runInteractiveTerminal(in *os.File, out io.Writer, info BuildInfo) error {
 	}
 }
 
-func readInteractiveLine(reader *bufio.Reader, out io.Writer) (string, error) {
+func readInteractiveLine(reader *bufio.Reader, out io.Writer, history []string) (string, error) {
 	buffer := []rune{}
+	cursor := 0
+	historyIndex := len(history)
 	fmt.Fprint(out, "[routerctl]# ")
 	for {
 		r, _, err := reader.ReadRune()
@@ -271,18 +277,70 @@ func readInteractiveLine(reader *bufio.Reader, out io.Writer) (string, error) {
 				return "", io.EOF
 			}
 		case 8, 127:
-			if len(buffer) > 0 {
-				buffer = buffer[:len(buffer)-1]
-				fmt.Fprint(out, "\b \b")
+			if cursor > 0 {
+				buffer = append(buffer[:cursor-1], buffer[cursor:]...)
+				cursor--
+				redrawInteractiveLine(out, buffer, cursor)
 			}
 		case '\t':
 			buffer = completeInteractiveLine(out, buffer)
+			cursor = len(buffer)
+		case 27:
+			sequence, sequenceErr := readEscapeSequence(reader)
+			if sequenceErr != nil {
+				return "", sequenceErr
+			}
+			switch sequence {
+			case 'A': // Up: most recent command, then older history.
+				if historyIndex > 0 {
+					historyIndex--
+					buffer = []rune(history[historyIndex])
+					cursor = len(buffer)
+					redrawInteractiveLine(out, buffer, cursor)
+				}
+			case 'B': // Down deliberately clears the line, matching the requested UX.
+				historyIndex = len(history)
+				buffer = nil
+				cursor = 0
+				redrawInteractiveLine(out, buffer, cursor)
+			case 'C':
+				if cursor < len(buffer) {
+					cursor++
+					fmt.Fprint(out, "\033[C")
+				}
+			case 'D':
+				if cursor > 0 {
+					cursor--
+					fmt.Fprint(out, "\033[D")
+				}
+			}
 		default:
 			if r >= 32 {
-				buffer = append(buffer, r)
-				fmt.Fprintf(out, "%c", r)
+				buffer = append(buffer[:cursor], append([]rune{r}, buffer[cursor:]...)...)
+				cursor++
+				redrawInteractiveLine(out, buffer, cursor)
 			}
 		}
+	}
+}
+
+func readEscapeSequence(reader *bufio.Reader) (rune, error) {
+	first, _, err := reader.ReadRune()
+	if err != nil {
+		return 0, err
+	}
+	if first != '[' {
+		return 0, nil
+	}
+	last, _, err := reader.ReadRune()
+	return last, err
+}
+
+func redrawInteractiveLine(out io.Writer, buffer []rune, cursor int) {
+	const prompt = "[routerctl]# "
+	fmt.Fprintf(out, "\r\033[2K%s%s", prompt, string(buffer))
+	if remaining := len(buffer) - cursor; remaining > 0 {
+		fmt.Fprintf(out, "\033[%dD", remaining)
 	}
 }
 

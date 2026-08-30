@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -48,6 +49,31 @@ func TestCompleteInteractiveLineCompletesUniqueCandidate(t *testing.T) {
 	line := completeInteractiveLine(&output, []rune("regulatory la"))
 	if got, want := string(line), "regulatory label "; got != want {
 		t.Fatalf("completed line = %q, want %q", got, want)
+	}
+}
+
+func TestReadInteractiveLineEditsAndRecallsHistory(t *testing.T) {
+	var output bytes.Buffer
+	line, err := readInteractiveLine(bufio.NewReader(strings.NewReader("abc\x1b[D\x1b[D\bX\n")), &output, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := line, "Xbc"; got != want {
+		t.Fatalf("edited line = %q, want %q", got, want)
+	}
+	line, err = readInteractiveLine(bufio.NewReader(strings.NewReader("\x1b[A\n")), &output, []string{"version"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := line, "version"; got != want {
+		t.Fatalf("history line = %q, want %q", got, want)
+	}
+	line, err = readInteractiveLine(bufio.NewReader(strings.NewReader("\x1b[A\x1b[B\n")), &output, []string{"version"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line != "" {
+		t.Fatalf("down arrow line = %q, want empty", line)
 	}
 }
 
