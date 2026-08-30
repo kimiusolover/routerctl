@@ -117,18 +117,18 @@ func Sync(options Options) (string, error) {
 // VerifyCommit reads a commit without changing the repository and applies the
 // trailer policy to its message and changed paths.
 func VerifyCommit(repository, revision string) (CommitVerification, error) {
-	status, err := StatusAt(repository)
+	root, err := output(repository, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return CommitVerification{}, err
+		return CommitVerification{}, fmt.Errorf("git verify commit: not a repository: %w", err)
 	}
 	if strings.TrimSpace(revision) == "" {
 		revision = "HEAD"
 	}
-	message, err := output(status.Root, "show", "-s", "--format=%B", revision)
+	message, err := output(root, "show", "-s", "--format=%B", revision)
 	if err != nil {
 		return CommitVerification{}, fmt.Errorf("git verify commit: read message: %w", err)
 	}
-	pathsText, err := output(status.Root, "diff-tree", "--no-commit-id", "--name-only", "-r", revision)
+	pathsText, err := output(root, "diff-tree", "--no-commit-id", "--name-only", "-r", revision)
 	if err != nil {
 		return CommitVerification{}, fmt.Errorf("git verify commit: read changed paths: %w", err)
 	}
