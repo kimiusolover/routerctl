@@ -1,0 +1,50 @@
+# REVIEW TEMPLATE ONLY. This profile is intentionally evidence-incomplete and
+# therefore cannot authorize transmission. Replace report identifiers and
+# values with operator-reviewed official source files before marking verified.
+apiVersion: routerctl.regulatory.certification-profile/v1
+kind: CertificationProfile
+metadata:
+  id: jp-tplink-archer-ax23v-v1-201-230283
+  evidenceStatus: incomplete
+subject:
+  jurisdiction: JP
+  authority: MIC
+  certification: {scheme: construction-design-certification, number: "201-230283"}
+  hardware: {manufacturer: TP-Link, model: Archer AX23V, revision: "1.0", calibrationRequired: true}
+constraints:
+  spectrum:
+    2g4:
+      legalRangeMHz: [2400, 2483.5]
+      primaryChannels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+      widthsMHz: [20, 40]
+      power: {regulatoryMWPerMHz: {20: 10, 40: 5}, certifiedRatedMWPerMHz: {20: 10, 40: 5}}
+    w52:
+      legalRangeMHz: [5150, 5250]
+      primaryChannels: [36, 40, 44, 48]
+      widthsMHz: [20, 40, 80]
+      indoorOnly: true
+      power: {regulatoryMWPerMHz: {20: 10, 40: 5, 80: 2.5}, certifiedRatedMWPerMHz: {20: 6.24, 40: 3.13, 80: 1.55}}
+    w53:
+      legalRangeMHz: [5250, 5350]
+      primaryChannels: [52, 56, 60, 64]
+      widthsMHz: [20, 40, 80]
+      indoorOnly: true
+      dfsRequired: true
+      power: {regulatoryMWPerMHz: {20: 10, 40: 5, 80: 2.5}, certifiedRatedMWPerMHz: {20: 6.30, 40: 3.15, 80: 1.58}}
+    w56:
+      legalRangeMHz: [5470, 5730]
+      primaryChannels: [100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144]
+      widthsMHz: [20, 40, 80]
+      dfsRequired: true
+      power: {regulatoryMWPerMHz: {20: 10, 40: 5, 80: 2.5}, certifiedRatedMWPerMHz: {20: 9.71, 40: 4.86, 80: 2.43}}
+  dfs: {cacMinSeconds: 60, channelMoveMaxSeconds: 10, channelClosingTXMaxSeconds: 0.26, nonOccupancyMinSeconds: 1800, bypassAllowed: false}
+  enforcement: {default: deny, onUnknownCertification: disable-tx, onHardwareMismatch: disable-tx, onCalibrationFailure: disable-tx}
+evidence:
+  certificationReports: [BTL-JPAP-1-2304G083, BTL-JPAP-2-2304G083, BTL-JPAP-3-2304G083]
+  testedSoftware: ["evidence-only; do not make this a firmware allow-list"]
+provenance:
+  legalSources:
+    - {id: radio-act, reference: "325AC0000000131"}
+    - {id: radio-equipment-regulations, reference: "325M50080000018 article 49-20"}
+  certificationSources:
+    - {id: ax23v-reports, reference: "operator must supply reviewed official reports"}

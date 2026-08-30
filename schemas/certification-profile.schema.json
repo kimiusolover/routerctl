@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://routerctl.dev/schemas/certification-profile.schema.json",
+  "title": "routerctl Certification Profile v1",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "subject", "constraints", "evidence", "provenance"],
+  "properties": {
+    "apiVersion": {"const": "routerctl.regulatory.certification-profile/v1"},
+    "kind": {"const": "CertificationProfile"},
+    "metadata": {"type":"object", "required":["id","evidenceStatus"], "properties":{"id":{"type":"string"},"evidenceStatus":{"enum":["verified","incomplete"]}}, "additionalProperties":false},
+    "subject": {"type":"object", "required":["jurisdiction","authority","certification","hardware"]},
+    "constraints": {"type":"object", "required":["spectrum","dfs","enforcement"]},
+    "evidence": {"type":"object", "required":["certificationReports"]},
+    "provenance": {"type":"object", "required":["legalSources","certificationSources"]}
+  },
+  "additionalProperties": false
+}

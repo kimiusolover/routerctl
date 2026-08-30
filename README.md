@@ -12,6 +12,7 @@ to one of the parent-repository layers:
 - `profiles/` — declarative build settings, feeds, configs, and target choices
 - `patches/` — ordered, reviewable downstream commits
 - `packaging/` — reproducible build and release assembly
+- `devices/` — product hardware definitions and narrowly scoped overlays
 
 `packaging/build.sh` creates a detached temporary worktree of the submodule,
 applies the patch series there, and runs the selected profile.  Consequently,
@@ -65,11 +66,24 @@ routerctl regulatory import mic report.pdf > record.json
 routerctl regulatory validate record.json
 routerctl regulatory derive record.json > derived.json
 routerctl regulatory explain derived.json wifi.5GHz.max_tx_power_dbm
+routerctl regulatory profile check examples/ax23v/regulatory/JP/certification-profile.yaml
 ```
 
 Only an observation explicitly classified as `certified_max` can enter the
 minimal derivation rule. Conducted-power, EIRP, measured, and configured values
 are evidence only and are never turned into a firmware limit by inference.
+
+`CertificationProfile` v1 is a separate, fail-closed policy input. It records
+the statutory ceiling, certified rated limit, hardware identity, DFS
+requirements, and source references separately. The runtime limit must be the
+minimum of statutory, certified, detected-hardware/calibration, and driver
+limits; measured test output is evidence only. A profile with
+`evidenceStatus: incomplete` is useful for review but cannot authorize RF
+transmission. Check a profile with:
+
+```sh
+routerctl regulatory profile check examples/ax23v/regulatory/JP/certification-profile.yaml
+```
 
 ## Architecture
 
@@ -82,6 +96,7 @@ are evidence only and are never turned into a firmware limit by inference.
 - `internal/cli` — command dispatch
 - `internal/regulatory` — evidence-preserving certification document import
 - `schemas` — machine-readable manifest schemas
+- `devices` — layered hardware and OpenWrt compatibility definitions
 - `examples` — device examples
 
 Backends and transports are interfaces so the core does not depend on a
@@ -148,6 +163,23 @@ fixture is extracted text so tests stay deterministic.
 The AX23v fixture is deliberately synthetic, not an actual certification
 record. Replace it with the operator-downloaded official report before using
 any result for a build constraint.
+
+## Label evidence extraction
+
+`routerctl regulatory label extract` accepts a reviewed YAML label layout and
+emits only the device identity and the combined technical-conformity mark plus
+number crop. It does not retain the full physical-label photograph in the
+bundle, and it does not run OCR by default. The resulting crop is evidence that
+the mark and number appeared together on a physical label; official
+certificate and test-report documents remain the primary certification
+evidence.
+
+```sh
+routerctl regulatory label extract \
+  --image device-label.jpg \
+  --layout examples/ax23v/regulatory/JP/label-layout.yaml \
+  --out /tmp/ax23v-label-evidence
+```
 
 Bootstrap repository. `build`, `deploy`, `rollback`, `health`, and
 `collect-logs` are reserved for later implementation.

@@ -1,0 +1,15 @@
+apiVersion: routerctl.regulatory/v1
+kind: LabelLayout
+metadata:
+  name: tp-link/archer-ax23v/jp-1.0
+device:
+  vendor: TP-Link
+  model: Archer AX23V
+  revision: JP/1.0
+# Coordinates apply only after a reviewed normalization step. This fixture does
+# not describe an actual physical label or its positions.
+crops:
+  device_identity_crop:
+    geometry: 1100x430+100+190
+  giteki_mark_and_number_crop:
+    geometry: 850x300+120+620
