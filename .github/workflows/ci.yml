@@ -3,11 +3,50 @@ name: CI
 on:
   push:
   pull_request:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
 
 jobs:
+  commit-trailer-policy:
+    name: commit-trailer-policy
+    runs-on: ubuntu-latest
+    # This workflow runs from the protected base branch, not PR code. It only
+    # fetches PR Git objects, so a PR cannot weaken its own verifier.
+    if: github.event_name == 'pull_request_target'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Fetch pull request commits without checking out PR code
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER"
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+      - name: Verify pull request commit trailers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          commits="$(git rev-list --reverse "$BASE_SHA..$HEAD_SHA")"
+          test -n "$commits" || { echo "No pull request commits to verify."; exit 0; }
+          while IFS= read -r commit; do
+            echo "Verifying $commit"
+            go run ./cmd/routerctl verify commit --repo . "$commit"
+          done <<< "$commits"
+
   test:
     strategy:
       matrix:

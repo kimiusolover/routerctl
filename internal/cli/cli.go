@@ -89,8 +89,11 @@ func Run(args []string, info BuildInfo) error {
 		}
 		return printJSON(os.Stdout, p)
 	case "verify":
+		if len(args) >= 2 && args[1] == "commit" {
+			return runVerifyCommit(args[2:])
+		}
 		if len(args) != 2 {
-			return errors.New("usage: routerctl verify <manifest>")
+			return errors.New("usage: routerctl verify <manifest> | routerctl verify commit [--repo <path>] [<revision>]")
 		}
 		m, err := manifest.Load(args[1])
 		if err != nil {
@@ -639,6 +642,9 @@ func runGit(args []string) error {
 	repository := fs.String("repo", ".", "Git repository path")
 	message := fs.String("message", "", "Commit message (generated when empty)")
 	dryRun := fs.Bool("dry-run", false, "Show the generated commit message without changing Git")
+	aiAssisted := fs.Bool("ai-assisted", false, "Add AI-Assisted-By: OpenAI ChatGPT")
+	reviewedBy := fs.String("reviewed-by", "", "Human reviewer name")
+	automationActor := fs.String("automation-actor", "", "Automation actor (router-os-bot[bot])")
 	if len(args) == 0 {
 		return errors.New("usage: routerctl git status|commit|sync [--repo <path>] [--message <message>] [--dry-run]")
 	}
@@ -646,7 +652,7 @@ func runGit(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	options := gitops.Options{Repository: *repository, Message: *message, DryRun: *dryRun}
+	options := gitops.Options{Repository: *repository, Message: *message, DryRun: *dryRun, Trailers: gitops.TrailerOptions{AIAssisted: *aiAssisted, ReviewedBy: *reviewedBy, AutomationActor: *automationActor}}
 	switch command {
 	case "status":
 		if *message != "" || *dryRun {
@@ -682,6 +688,21 @@ func runGit(args []string) error {
 	default:
 		return fmt.Errorf("unknown git command %q", command)
 	}
+}
+
+func runVerifyCommit(args []string) error {
+	fs := flag.NewFlagSet("verify commit", flag.ContinueOnError)
+	repository := fs.String("repo", ".", "Git repository path")
+	if err := fs.Parse(args); err != nil { return err }
+	if fs.NArg() > 1 { return errors.New("usage: routerctl verify commit [--repo <path>] [<revision>]") }
+	revision := "HEAD"
+	if fs.NArg() == 1 { revision = fs.Arg(0) }
+	result, err := gitops.VerifyCommit(*repository, revision)
+	if err != nil { return err }
+	for _, warning := range result.Warnings { fmt.Fprintf(os.Stderr, "WARN: %s\n", warning) }
+	if !result.OK() { return fmt.Errorf("commit verification failed: %v", result.Errors) }
+	fmt.Println("OK")
+	return nil
 }
 
 func runBuild(manifestPath string) error {
@@ -1006,10 +1027,11 @@ Usage:
   routerctl version
 	  routerctl git status [--repo <path>]
 	  routerctl git commit [--repo <path>] [--message <message>] [--dry-run]
-	  routerctl git sync [--repo <path>] [--message <message>] [--dry-run]
+	  routerctl git sync [--repo <path>] [--message <message>] [--dry-run] [--ai-assisted] [--reviewed-by <human>] [--automation-actor router-os-bot[bot]]
   routerctl inspect <manifest>
   routerctl plan <manifest>
-  routerctl verify <manifest>
+	  routerctl verify <manifest>
+	  routerctl verify commit [--repo <path>] [<revision>]
   routerctl resolve <manifest>
   routerctl verify-release <manifest.json> <SHA256SUMS> <provenance.json>
   routerctl regulatory import mic <document.pdf|document.txt>

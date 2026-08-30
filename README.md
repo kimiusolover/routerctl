@@ -2,6 +2,10 @@
 
 Cross-platform host-side orchestrator for router OS development and deployment.
 
+## Collaboration and provenance
+
+This is a **Human–AI collaborative project**. Contributor roles and the review/provenance rules are documented in [CONTRIBUTORS.md](CONTRIBUTORS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and the [Git trailer policy](docs/development/git-trailer-policy.md). Safety-sensitive commits can be checked locally with `routerctl verify commit`.
+
 ## tiny-layer policy
 
 This repository is an integration layer, not a fork of firmware upstream.  The
@@ -150,6 +154,7 @@ routerctl git commit
 
 # Commit if needed, pull with rebase, then make a normal push.
 routerctl git sync
+routerctl verify commit
 ```
 
 `sync` requires an upstream branch and stops if rebase conflicts occur. It

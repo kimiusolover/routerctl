@@ -23,6 +23,7 @@ type Options struct {
 	Repository string
 	Message    string
 	DryRun     bool
+	Trailers   TrailerOptions
 }
 
 // StatusAt returns the current branch and porcelain changes for a repository.
@@ -60,6 +61,9 @@ func Commit(options Options) (string, error) {
 	if message == "" {
 		message = MessageFor(paths)
 	}
+	if message, err = addRequestedTrailers(message, options.Trailers); err != nil {
+		return "", err
+	}
 	if options.DryRun {
 		return message, nil
 	}
@@ -75,6 +79,18 @@ func Commit(options Options) (string, error) {
 // Sync commits local changes, rebases onto the configured upstream, then pushes.
 // It deliberately uses ordinary push only; force pushes are never issued.
 func Sync(options Options) (string, error) {
+	if strings.TrimSpace(options.Message) == "" {
+		status, err := StatusAt(options.Repository)
+		if err != nil {
+			return "", err
+		}
+		options.Message = MessageFor(changedPaths(status.Changes))
+	}
+	var err error
+	options.Message, err = AddSyncTrailers(options.Message, options.Trailers)
+	if err != nil {
+		return "", err
+	}
 	message, err := Commit(options)
 	if err != nil {
 		return "", err
@@ -96,6 +112,48 @@ func Sync(options Options) (string, error) {
 		return "", fmt.Errorf("git sync: push failed: %w", err)
 	}
 	return message, nil
+}
+
+// VerifyCommit reads a commit without changing the repository and applies the
+// trailer policy to its message and changed paths.
+func VerifyCommit(repository, revision string) (CommitVerification, error) {
+	status, err := StatusAt(repository)
+	if err != nil {
+		return CommitVerification{}, err
+	}
+	if strings.TrimSpace(revision) == "" {
+		revision = "HEAD"
+	}
+	message, err := output(status.Root, "show", "-s", "--format=%B", revision)
+	if err != nil {
+		return CommitVerification{}, fmt.Errorf("git verify commit: read message: %w", err)
+	}
+	pathsText, err := output(status.Root, "diff-tree", "--no-commit-id", "--name-only", "-r", revision)
+	if err != nil {
+		return CommitVerification{}, fmt.Errorf("git verify commit: read changed paths: %w", err)
+	}
+	return VerifyCommitMessage(nonEmptyLines(pathsText), message), nil
+}
+
+func addRequestedTrailers(message string, options TrailerOptions) (string, error) {
+	// Sync has already added and validated its complete trailer set before it
+	// reaches Commit; do not strip its Generated-By marker.
+	if first(parseTrailers(message)[GeneratedByTrailer]) != "" {
+		if err := validateTrailerValues(parseTrailers(message)); err != nil {
+			return "", err
+		}
+		return message, nil
+	}
+	if !options.AIAssisted && strings.TrimSpace(options.ReviewedBy) == "" && strings.TrimSpace(options.AutomationActor) == "" {
+		return message, nil
+	}
+	// Commit has no generator trailer. Reuse the strict value validation and
+	// remove the sync marker it adds for this non-sync operation.
+	withSync, err := AddSyncTrailers(message, options)
+	if err != nil {
+		return "", err
+	}
+	return strings.Replace(withSync, "\n\n"+GeneratedByTrailer+": "+routerctlSync, "", 1), nil
 }
 
 // MessageFor returns a deterministic conventional-commit message from paths.
