@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"image"
@@ -11,6 +12,39 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestInteractiveArgsBuildsManifestCommand(t *testing.T) {
+	var output bytes.Buffer
+	args, err := interactiveArgs(strings.NewReader("3\nexamples/device.yaml\n"), &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(args, " "), "verify examples/device.yaml"; got != want {
+		t.Fatalf("interactive args = %q, want %q", got, want)
+	}
+}
+
+func TestInteractiveArgsConfirmsGitMutation(t *testing.T) {
+	var output bytes.Buffer
+	args, err := interactiveArgs(strings.NewReader("8\n\nfeat: guided mode\ny\n"), &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(args, " "), "git commit --repo . --message feat: guided mode"; got != want {
+		t.Fatalf("interactive args = %q, want %q", got, want)
+	}
+}
+
+func TestInteractiveArgsCancelsGitMutation(t *testing.T) {
+	var output bytes.Buffer
+	args, err := interactiveArgs(strings.NewReader("9\n\n\nn\n"), &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(args) != 0 {
+		t.Fatalf("interactive args = %#v, want cancellation", args)
+	}
+}
 
 func TestFindDeviceManifests(t *testing.T) {
 	root := t.TempDir()

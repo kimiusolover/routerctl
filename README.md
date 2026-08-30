@@ -44,6 +44,18 @@ The intended flow is:
 
 ## Initial commands
 
+Run `routerctl` from a terminal with no arguments to start its guided mode.
+You can also request it explicitly (including when input is piped):
+
+```sh
+routerctl interactive
+# or: routerctl --interactive
+```
+
+The guided flow covers every command, asks for the required paths and values,
+and asks for a final confirmation before a Git commit or sync. The ordinary
+command forms below remain available for scripts and CI.
+
 ```sh
 go run ./cmd/routerctl version
 go run ./cmd/routerctl inspect examples/ax23v/device.yaml

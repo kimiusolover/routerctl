@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -40,7 +41,27 @@ type BuildInfo struct {
 }
 
 func Run(args []string, info BuildInfo) error {
+	if len(args) > 0 && (args[0] == "interactive" || args[0] == "--interactive" || args[0] == "-i") {
+		var err error
+		args, err = interactiveArgs(os.Stdin, os.Stdout)
+		if err != nil {
+			return err
+		}
+		if len(args) == 0 {
+			return nil
+		}
+	}
 	if len(args) == 0 {
+		if isTerminal(os.Stdin) {
+			selected, err := interactiveArgs(os.Stdin, os.Stdout)
+			if err != nil {
+				return err
+			}
+			if len(selected) > 0 {
+				return Run(selected, info)
+			}
+			return nil
+		}
 		nextSteps(os.Stdout)
 		return nil
 	}
@@ -140,6 +161,186 @@ func Run(args []string, info BuildInfo) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func isTerminal(file *os.File) bool {
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// interactiveArgs turns the complete command surface into a guided flow while
+// keeping the regular positional/flag interface stable for scripts and CI.
+func interactiveArgs(in io.Reader, out io.Writer) ([]string, error) {
+	reader := bufio.NewReader(in)
+	fmt.Fprintln(out, "routerctl interactive mode")
+	fmt.Fprintln(out, "Choose an action:")
+	actions := []string{
+		"inspect a manifest", "plan a manifest", "verify a manifest", "resolve a release artifact", "build firmware",
+		"verify release metadata", "git status", "git commit", "git sync", "import MIC document", "validate regulatory record",
+		"derive regulatory constraints", "explain a derived constraint", "check certification profile", "extract label evidence",
+		"verify label evidence", "create evidence bundle", "show version",
+		"import MIC document from an evidence bundle",
+	}
+	for i, action := range actions {
+		fmt.Fprintf(out, "  %d. %s\n", i+1, action)
+	}
+	choice, err := promptRequired(reader, out, "Action number (blank to cancel)")
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	switch choice {
+	case "1", "2", "3", "4", "5":
+		path, err := promptRequired(reader, out, "Manifest path")
+		if err != nil {
+			return nil, err
+		}
+		return []string{map[string]string{"1": "inspect", "2": "plan", "3": "verify", "4": "resolve", "5": "build"}[choice], path}, nil
+	case "6":
+		return promptArgs(reader, out, []string{"verify-release", "Manifest JSON path", "SHA256SUMS path", "Provenance JSON path"})
+	case "7", "8", "9":
+		return interactiveGitArgs(reader, out, choice)
+	case "10":
+		return promptArgs(reader, out, []string{"regulatory", "import", "mic", "MIC document path"})
+	case "11":
+		return promptArgs(reader, out, []string{"regulatory", "validate", "Certification record path"})
+	case "12":
+		return promptArgs(reader, out, []string{"regulatory", "derive", "Certification record path"})
+	case "13":
+		return promptArgs(reader, out, []string{"regulatory", "explain", "Derived constraints path", "Constraint key"})
+	case "14":
+		return promptArgs(reader, out, []string{"regulatory", "profile", "check", "Certification profile path"})
+	case "15":
+		return interactiveLabelExtractArgs(reader, out)
+	case "16":
+		return promptArgs(reader, out, []string{"regulatory", "label", "verify", "Label evidence bundle directory"})
+	case "17":
+		return interactiveBundleArgs(reader, out)
+	case "18":
+		return []string{"version"}, nil
+	case "19":
+		bundle, err := promptRequired(reader, out, "Evidence bundle path")
+		if err != nil {
+			return nil, err
+		}
+		return []string{"regulatory", "import", "mic", "--bundle", bundle}, nil
+	default:
+		return nil, fmt.Errorf("invalid action number %q", choice)
+	}
+}
+
+func promptArgs(reader *bufio.Reader, out io.Writer, values []string) ([]string, error) {
+	args := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.HasPrefix(value, "-") || value == "regulatory" || value == "import" || value == "mic" || value == "profile" || value == "check" || value == "label" || value == "verify" || value == "verify-release" || value == "validate" || value == "derive" || value == "explain" {
+			args = append(args, value)
+			continue
+		}
+		answer, err := promptRequired(reader, out, value)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, answer)
+	}
+	return args, nil
+}
+
+func interactiveGitArgs(reader *bufio.Reader, out io.Writer, choice string) ([]string, error) {
+	command := map[string]string{"7": "status", "8": "commit", "9": "sync"}[choice]
+	repo, err := promptDefault(reader, out, "Repository path", ".")
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"git", command, "--repo", repo}
+	if command == "status" {
+		return args, nil
+	}
+	message, err := promptDefault(reader, out, "Commit message (blank to generate)", "")
+	if err != nil {
+		return nil, err
+	}
+	if message != "" {
+		args = append(args, "--message", message)
+	}
+	confirm, err := promptDefault(reader, out, "Proceed with Git changes? [y/N]", "n")
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(confirm, "y") && !strings.EqualFold(confirm, "yes") {
+		return nil, nil
+	}
+	return args, nil
+}
+
+func interactiveLabelExtractArgs(reader *bufio.Reader, out io.Writer) ([]string, error) {
+	image, err := promptRequired(reader, out, "Source label image path")
+	if err != nil {
+		return nil, err
+	}
+	layout, err := promptRequired(reader, out, "Reviewed label layout path")
+	if err != nil {
+		return nil, err
+	}
+	outDir, err := promptRequired(reader, out, "Output bundle directory")
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"regulatory", "label", "extract", "--image", image, "--layout", layout, "--out", outDir}
+	for _, field := range []struct{ label, flag string }{{"Vendor (optional)", "--vendor"}, {"Model (optional)", "--model"}, {"Hardware revision (optional)", "--revision"}, {"Certification number (optional)", "--cert-number"}, {"Review status (optional)", "--status"}} {
+		value, err := promptDefault(reader, out, field.label, "")
+		if err != nil {
+			return nil, err
+		}
+		if value != "" {
+			args = append(args, field.flag, value)
+		}
+	}
+	return args, nil
+}
+
+func interactiveBundleArgs(reader *bufio.Reader, out io.Writer) ([]string, error) {
+	args := []string{"regulatory", "bundle", "create"}
+	for _, field := range []struct{ label, flag string }{{"Authority", "--authority"}, {"Certification number", "--number"}, {"Exact source URL", "--source-url"}, {"Checked at (RFC3339)", "--checked-at"}, {"Checked by", "--checked-by"}, {"Number evidence file", "--number-evidence"}, {"Test report file", "--report"}, {"Vendor", "--vendor"}, {"Model", "--model"}, {"Revision", "--revision"}} {
+		value, err := promptRequired(reader, out, field.label)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, field.flag, value)
+	}
+	return args, nil
+}
+
+func promptRequired(reader *bufio.Reader, out io.Writer, label string) (string, error) {
+	value, err := promptDefault(reader, out, label, "")
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf("%s is required", strings.ToLower(label))
+	}
+	return value, nil
+}
+
+func promptDefault(reader *bufio.Reader, out io.Writer, label, fallback string) (string, error) {
+	if fallback == "" {
+		fmt.Fprintf(out, "%s: ", label)
+	} else {
+		fmt.Fprintf(out, "%s [%s]: ", label, fallback)
+	}
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" && errors.Is(err, io.EOF) {
+		return "", io.EOF
+	}
+	if value == "" {
+		return fallback, nil
+	}
+	return value, nil
 }
 
 func runGit(args []string) error {
@@ -509,6 +710,8 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, `routerctl - router OS host-side orchestrator
 
 Usage:
+  routerctl interactive                 # guided mode for every command
+  routerctl --interactive               # same as above
   routerctl version
 	  routerctl git status [--repo <path>]
 	  routerctl git commit [--repo <path>] [--message <message>] [--dry-run]
