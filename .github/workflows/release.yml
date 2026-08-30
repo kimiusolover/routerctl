@@ -34,7 +34,7 @@ jobs:
             go build -trimpath \
             -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.commit=${GITHUB_SHA} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o "dist/routerctl-${{ matrix.goos }}-${{ matrix.goarch }}${ext}" ./cmd/routerctl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: routerctl-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
