@@ -31,6 +31,7 @@ import (
 	"github.com/example/routerctl/internal/regulatory/validate"
 	"github.com/example/routerctl/internal/releaseverify"
 	verifycmd "github.com/example/routerctl/internal/verify"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -157,11 +158,14 @@ func isTerminal(file *os.File) bool {
 // runInteractive is a REPL: commands may be entered repeatedly, as in parted.
 // Commands with omitted required parameters ask only for those parameters.
 func runInteractive(in io.Reader, out io.Writer, info BuildInfo) error {
+	if input, ok := in.(*os.File); ok && term.IsTerminal(int(input.Fd())) {
+		return runInteractiveTerminal(input, out, info)
+	}
 	reader := bufio.NewReader(in)
 	fmt.Fprintln(out, "routerctl interactive mode")
 	fmt.Fprintln(out, "Enter `help` for commands, or `quit` to exit.")
 	for {
-		fmt.Fprint(out, "routerctl> ")
+		fmt.Fprint(out, "[routerctl]# ")
 		line, err := reader.ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
@@ -173,42 +177,200 @@ func runInteractive(in io.Reader, out io.Writer, info BuildInfo) error {
 		if line == "" {
 			continue
 		}
-		args, parseErr := splitCommandLine(line)
-		if parseErr != nil {
-			fmt.Fprintf(out, "routerctl: %v\n", parseErr)
-			continue
+		quit, commandErr := executeInteractiveLine(reader, out, line, info)
+		if commandErr != nil {
+			return commandErr
 		}
-		switch args[0] {
-		case "quit", "exit":
+		if quit {
 			return nil
-		case "help", "?":
-			interactiveUsage(out)
-			continue
-		}
-		args, err = fillInteractiveArgs(reader, out, args)
-		if err != nil {
-			fmt.Fprintf(out, "routerctl: %v\n", err)
-			continue
-		}
-		if len(args) == 0 {
-			continue
-		}
-		if len(args) >= 2 && args[0] == "git" && (args[1] == "commit" || args[1] == "sync") {
-			answer, confirmErr := promptDefault(reader, out, "Proceed with Git changes? [y/N]", "n")
-			if confirmErr != nil {
-				return confirmErr
-			}
-			if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
-				continue
-			}
-		}
-		if commandErr := Run(args, info); commandErr != nil {
-			fmt.Fprintf(out, "routerctl: %v\n", commandErr)
 		}
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 	}
+}
+
+func executeInteractiveLine(reader *bufio.Reader, out io.Writer, line string, info BuildInfo) (bool, error) {
+	args, err := splitCommandLine(line)
+	if err != nil {
+		fmt.Fprintf(out, "routerctl: %v\n", err)
+		return false, nil
+	}
+	switch args[0] {
+	case "quit", "exit":
+		return true, nil
+	case "help", "?":
+		interactiveUsage(out)
+		return false, nil
+	}
+	args, err = fillInteractiveArgs(reader, out, args)
+	if err != nil {
+		fmt.Fprintf(out, "routerctl: %v\n", err)
+		return false, nil
+	}
+	if len(args) >= 2 && args[0] == "git" && (args[1] == "commit" || args[1] == "sync") {
+		answer, confirmErr := promptDefault(reader, out, "Proceed with Git changes? [y/N]", "n")
+		if confirmErr != nil {
+			return false, confirmErr
+		}
+		if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
+			return false, nil
+		}
+	}
+	if commandErr := Run(args, info); commandErr != nil {
+		fmt.Fprintf(out, "routerctl: %v\n", commandErr)
+	}
+	return false, nil
+}
+
+func runInteractiveTerminal(in *os.File, out io.Writer, info BuildInfo) error {
+	reader := bufio.NewReader(in)
+	fmt.Fprintln(out, "routerctl interactive mode")
+	fmt.Fprintln(out, "Enter `help` for commands, Tab to complete, or `quit` / Ctrl+D to exit.")
+	for {
+		state, err := term.MakeRaw(int(in.Fd()))
+		if err != nil {
+			return err
+		}
+		line, readErr := readInteractiveLine(reader, out)
+		if restoreErr := term.Restore(int(in.Fd()), state); restoreErr != nil {
+			return restoreErr
+		}
+		fmt.Fprintln(out)
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return nil
+			}
+			return readErr
+		}
+		quit, err := executeInteractiveLine(reader, out, line, info)
+		if err != nil {
+			return err
+		}
+		if quit {
+			return nil
+		}
+	}
+}
+
+func readInteractiveLine(reader *bufio.Reader, out io.Writer) (string, error) {
+	buffer := []rune{}
+	fmt.Fprint(out, "[routerctl]# ")
+	for {
+		r, _, err := reader.ReadRune()
+		if err != nil {
+			return "", err
+		}
+		switch r {
+		case '\r', '\n':
+			return string(buffer), nil
+		case 3:
+			return "", errors.New("interrupted")
+		case 4:
+			if len(buffer) == 0 {
+				return "", io.EOF
+			}
+		case 8, 127:
+			if len(buffer) > 0 {
+				buffer = buffer[:len(buffer)-1]
+				fmt.Fprint(out, "\b \b")
+			}
+		case '\t':
+			buffer = completeInteractiveLine(out, buffer)
+		default:
+			if r >= 32 {
+				buffer = append(buffer, r)
+				fmt.Fprintf(out, "%c", r)
+			}
+		}
+	}
+}
+
+func completeInteractiveLine(out io.Writer, buffer []rune) []rune {
+	line := string(buffer)
+	prefix := line[strings.LastIndexAny(line, " \t")+1:]
+	candidates := completionCandidates(strings.Fields(line), strings.HasSuffix(line, " "))
+	matches := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if strings.HasPrefix(candidate, prefix) {
+			matches = append(matches, candidate)
+		}
+	}
+	if len(matches) == 0 {
+		fmt.Fprint(out, "\a")
+		return buffer
+	}
+	if len(matches) == 1 {
+		line = line[:len(line)-len(prefix)] + matches[0] + " "
+		fmt.Fprint(out, matches[0][len(prefix):]+" ")
+		return []rune(line)
+	}
+	common := longestCommonPrefix(matches)
+	if common != prefix {
+		line = line[:len(line)-len(prefix)] + common
+		fmt.Fprint(out, common[len(prefix):])
+		return []rune(line)
+	}
+	fmt.Fprintf(out, "\r\n%s\r\n[routerctl]# %s", strings.Join(matches, "  "), line)
+	return buffer
+}
+
+func completionCandidates(words []string, trailingSpace bool) []string {
+	if len(words) == 0 {
+		return []string{"build", "git", "help", "inspect", "plan", "quit", "regulatory", "resolve", "verify", "verify-release", "version"}
+	}
+	if len(words) == 1 && trailingSpace && isManifestCommand(words[0]) {
+		root, err := os.Getwd()
+		if err != nil {
+			return nil
+		}
+		candidates := findDeviceManifests(root)
+		paths := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			paths = append(paths, candidate.Path)
+		}
+		return paths
+	}
+	if len(words) == 1 && !trailingSpace {
+		return completionCandidates(nil, false)
+	}
+	if words[0] == "git" && len(words) <= 2 {
+		return []string{"commit", "status", "sync"}
+	}
+	if words[0] != "regulatory" {
+		return nil
+	}
+	if len(words) == 1 || (len(words) == 2 && !trailingSpace) {
+		return []string{"bundle", "derive", "explain", "import", "label", "profile", "validate"}
+	}
+	switch words[1] {
+	case "import":
+		return []string{"mic"}
+	case "profile":
+		return []string{"check"}
+	case "label":
+		return []string{"extract", "verify"}
+	case "bundle":
+		return []string{"create"}
+	}
+	return nil
+}
+
+func isManifestCommand(command string) bool {
+	return command == "build" || command == "inspect" || command == "plan" || command == "resolve" || command == "verify"
+}
+
+func longestCommonPrefix(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	prefix := values[0]
+	for _, value := range values[1:] {
+		for !strings.HasPrefix(value, prefix) {
+			prefix = prefix[:len(prefix)-1]
+		}
+	}
+	return prefix
 }
 
 func interactiveUsage(out io.Writer) {

@@ -19,7 +19,7 @@ func TestInteractiveShellRunsCommandsUntilQuit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "routerctl>") || !strings.Contains(output.String(), "Commands are the same") {
+	if !strings.Contains(output.String(), "[routerctl]#") || !strings.Contains(output.String(), "Commands are the same") {
 		t.Fatalf("interactive output = %q", output.String())
 	}
 }
@@ -31,6 +31,23 @@ func TestSplitCommandLineSupportsQuotedArguments(t *testing.T) {
 	}
 	if got, want := strings.Join(args, "|"), "git|commit|--message|feat: guided mode"; got != want {
 		t.Fatalf("split command = %q, want %q", got, want)
+	}
+}
+
+func TestCompletionCandidatesAndCommonPrefix(t *testing.T) {
+	if got, want := strings.Join(completionCandidates([]string{"regulatory", "label"}, true), ","), "extract,verify"; got != want {
+		t.Fatalf("completion candidates = %q, want %q", got, want)
+	}
+	if got, want := longestCommonPrefix([]string{"verify", "version"}), "ver"; got != want {
+		t.Fatalf("common prefix = %q, want %q", got, want)
+	}
+}
+
+func TestCompleteInteractiveLineCompletesUniqueCandidate(t *testing.T) {
+	var output bytes.Buffer
+	line := completeInteractiveLine(&output, []rune("regulatory la"))
+	if got, want := string(line), "regulatory label "; got != want {
+		t.Fatalf("completed line = %q, want %q", got, want)
 	}
 }
 

@@ -55,16 +55,19 @@ routerctl interactive
 The interactive shell keeps running after each command, like `parted`:
 
 ```text
-routerctl> verify examples/ax23v/device.yaml
-routerctl> plan
+[routerctl]# verify examples/ax23v/device.yaml
+[routerctl]# plan
 Manifest path: examples/ax23v/device.yaml
-routerctl> help
-routerctl> quit
+[routerctl]# reg<Tab>
+[routerctl]# help
+[routerctl]# quit
 ```
 
-It asks for omitted required values and asks for a final confirmation before a
-Git commit or sync. The ordinary command forms below remain available for
-scripts and CI.
+Tab completes top-level commands, the `git` / `regulatory` command tree, and
+device manifests. A second Tab lists ambiguous candidates; `Ctrl+D` exits. It
+asks for omitted required values and asks for a final confirmation before a Git
+commit or sync. The ordinary command forms below remain available for scripts
+and CI.
 
 ```sh
 go run ./cmd/routerctl version
