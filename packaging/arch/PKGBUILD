@@ -2,7 +2,7 @@
 
 _pkgname=routerctl
 pkgname=${_pkgname}-git
-pkgver=r10.g92f1088
+pkgver=r6.gf0b0137
 pkgrel=1
 pkgdesc='Host-side orchestrator for router OS manifests, releases, and regulatory evidence'
 arch=('x86_64' 'aarch64')
