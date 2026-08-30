@@ -18,9 +18,12 @@ var (
 	power           = regexp.MustCompile(`(?im)(Certified Maximum|Maximum) Conducted Output Power\s*[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*dBm`)
 	antenna         = regexp.MustCompile(`(?im)Antenna Gain\s*[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*dBi`)
 	page            = regexp.MustCompile(`(?im)(?:^|\n)\s*(?:Page|ページ)\s*([0-9]+)\b`)
-	vendor          = regexp.MustCompile(`(?im)^Vendor\s*[:：]\s*(.+)$`)
-	deviceModel     = regexp.MustCompile(`(?im)^Model\s*[:：]\s*(.+)$`)
-	revision        = regexp.MustCompile(`(?im)^Revision\s*[:：]\s*(.+)$`)
+	vendor          = regexp.MustCompile(`(?im)^[ \t]*Vendor\s*[:：]\s*(.+)$`)
+	applicant       = regexp.MustCompile(`(?im)^[ \t]*Applicant\s*[:：]\s*(.+)$`)
+	manufacturer    = regexp.MustCompile(`(?im)^[ \t]*Manufacturer\s*[:：]\s*(.+)$`)
+	deviceModel     = regexp.MustCompile(`(?im)^[ \t]*Model\s*[:：]\s*(.+)$`)
+	seriesModel     = regexp.MustCompile(`(?im)^[ \t]*Series Model\s*[:：]\s*(.+)$`)
+	revision        = regexp.MustCompile(`(?im)^[ \t]*Revision\s*[:：]\s*(.+)$`)
 )
 
 type Importer struct{}
@@ -38,7 +41,7 @@ func (Importer) Extract(doc importer.Document) (*model.CertificationRecord, erro
 		APIVersion: model.APIVersion, Kind: "CertificationRecord", Jurisdiction: "JP",
 		Certification: model.Certification{Authority: "MIC", Number: id[1], Source: model.Source{Document: doc.Name, SHA256: doc.SHA256}},
 	}
-	record.Device = model.Device{Vendor: capture(vendor, doc.Text), Model: capture(deviceModel, doc.Text), Revision: capture(revision, doc.Text)}
+	record.Device = observedDevice(doc.Text)
 	radio := model.Radio{Band: "unknown", Evidence: model.Evidence{Document: doc.Name, Page: sourcePage(doc.Text)}, Confidence: "extracted"}
 	if match := frequency.FindStringSubmatch(doc.Text); len(match) == 3 {
 		radio.Frequency.MinMHz, _ = strconv.Atoi(match[1])
@@ -81,12 +84,75 @@ func (i Importer) ExtractWithNumber(doc importer.Document, number string, source
 }
 
 func MatchesDevice(record *model.CertificationRecord, expected model.Device) error {
-	if record == nil || !same(record.Device.Vendor, expected.Vendor) || !same(record.Device.Model, expected.Model) || !same(record.Device.Revision, expected.Revision) {
+	if record == nil || !matchesAny(record.Device.Vendor, record.Device.VendorCandidates, expected.Vendor, sameVendor) || !matchesAny(record.Device.Model, record.Device.ModelCandidates, expected.Model, same) || (record.Device.Revision != "" && !same(record.Device.Revision, expected.Revision)) {
 		return fmt.Errorf("mic: document device does not match evidence bundle")
 	}
 	return nil
 }
+
+// observedDevice keeps report labels as observations. Series Model is preferred
+// over Test Model because the latter identifies the tested representative, not
+// necessarily the marketed product. A blank revision remains explicitly unknown.
+func observedDevice(text string) model.Device {
+	vendors := captures(text, applicant, manufacturer, vendor)
+	models := captures(text, seriesModel)
+	if len(models) == 0 {
+		models = captures(text, deviceModel)
+	}
+	d := model.Device{VendorCandidates: vendors, ModelCandidates: models, Revision: capture(revision, text)}
+	if len(vendors) > 0 {
+		d.Vendor = vendors[0]
+	}
+	if len(models) > 0 {
+		d.Model = models[0]
+	}
+	return d
+}
+
+func captures(text string, patterns ...*regexp.Regexp) []string {
+	var values []string
+	for _, pattern := range patterns {
+		if value := capture(pattern, text); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func matchesAny(primary string, candidates []string, expected string, compare func(string, string) bool) bool {
+	if compare(primary, expected) {
+		return true
+	}
+	for _, candidate := range candidates {
+		if compare(candidate, expected) {
+			return true
+		}
+	}
+	return false
+}
+
 func same(a, b string) bool { return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b)) }
+func sameVendor(a, b string) bool {
+	return normalizedVendor(a) == normalizedVendor(b)
+}
+
+// normalizedVendor only removes explicitly allowed legal-entity suffixes.
+// It deliberately does not use a substring match: a shared brand word is not
+// enough to establish that two observed vendor names are the same entity.
+func normalizedVendor(value string) string {
+	words := strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+	legalSuffix := map[string]bool{
+		"company": true, "co": true, "corporation": true, "corp": true,
+		"inc": true, "incorporated": true, "limited": true, "ltd": true,
+		"llc": true, "plc": true,
+	}
+	for len(words) > 0 && legalSuffix[words[len(words)-1]] {
+		words = words[:len(words)-1]
+	}
+	return strings.Join(words, " ")
+}
 func (Importer) extractWithoutNumber(doc importer.Document) (*model.CertificationRecord, error) {
 	if !strings.Contains(doc.Text, "MIC") && !strings.Contains(doc.Text, "技術基準") {
 		return nil, fmt.Errorf("mic: document does not look like an MIC report")

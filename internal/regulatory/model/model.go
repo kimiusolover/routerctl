@@ -25,9 +25,11 @@ type CertificationRecord struct {
 }
 
 type Device struct {
-	Vendor   string `json:"vendor"`
-	Model    string `json:"model"`
-	Revision string `json:"revision"`
+	Vendor           string   `json:"vendor"`
+	Model            string   `json:"model"`
+	Revision         string   `json:"revision"`
+	VendorCandidates []string `json:"vendorCandidates,omitempty"`
+	ModelCandidates  []string `json:"modelCandidates,omitempty"`
 }
 
 type Certification struct {
