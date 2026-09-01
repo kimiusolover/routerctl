@@ -1,0 +1,27 @@
+title: "[Q&A]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        使い方・対応環境・導入に関する質問用です。投稿は参考情報であり、ファームウェア書込み、RF 送信、安全判断、リリースを許可しません。
+  - type: textarea
+    id: question
+    attributes:
+      label: 質問
+      description: 実現したいこと、または確認したいことを具体的に記入してください。
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境と実行手順
+      description: routerctl のバージョン、OS、実行したコマンド、再現手順を記入してください。
+      placeholder: |
+        routerctl version
+        OS:
+        実行したコマンド:
+  - type: textarea
+    id: sanitized-output
+    attributes:
+      label: 関連する出力（任意）
+      description: 秘密鍵、トークン、パスワード、SSID、MAC アドレス、シリアル番号、個人情報、EEPROM/MTD ダンプを除去してから貼り付けてください。
