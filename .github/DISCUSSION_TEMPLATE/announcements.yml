@@ -1,0 +1,20 @@
+title: "[Announcement]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        メンテナー向けのリリース、互換性、運用上の告知用です。告知はファームウェア書込み、RF 送信、安全判断、リリース承認を置き換えません。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 告知内容を簡潔に記入してください。
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影響と対応
+      description: 対象、互換性への影響、必要な対応を記入してください。
+    validations:
+      required: true
