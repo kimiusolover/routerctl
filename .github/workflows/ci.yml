@@ -5,9 +5,12 @@ on:
   pull_request:
   pull_request_target:
     types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, dismissed]
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   commit-trailer-policy:
@@ -15,16 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     # This workflow runs from the protected base branch, not PR code. It only
     # fetches PR Git objects, so a PR cannot weaken its own verifier.
-    if: github.event_name == 'pull_request_target'
+    if: github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review'
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
       - uses: actions/setup-go@v7
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         with:
           go-version-file: go.mod
       - name: Fetch pull request commits without checking out PR code
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -35,6 +40,7 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}"
           git cat-file -e "$HEAD_SHA^{commit}"
       - name: Verify pull request commit trailers
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -46,6 +52,41 @@ jobs:
             echo "Verifying $commit"
             go run ./cmd/routerctl verify commit --repo . "$commit"
           done <<< "$commits"
+      - name: Verify reviewed Dependabot action-only exception
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -o errexit -o nounset -o pipefail
+          files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" --jq '.[].filename')"
+          test -n "$files" || { echo "Dependabot PR has no changed files."; exit 1; }
+          while IFS= read -r file; do
+            case "$file" in
+              .github/workflows/*.yml|.github/workflows/*.yaml) ;;
+              *) echo "Dependabot exception forbids changed path: $file"; exit 1 ;;
+            esac
+          done <<< "$files"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" --jq '.[].patch // empty' |
+            awk '
+              /^--- |^\+\+\+ / { next }
+              /^[+-]/ {
+                line = substr($0, 2)
+                if (line !~ /^[[:space:]]*uses:[[:space:]]+[[:alnum:]_.-]+\/[[:alnum:]_.-]+@[[:alnum:]_.-]+[[:space:]]*(#.*)?$/) {
+                  print "Dependabot exception permits only uses: version changes: " line > "/dev/stderr"
+                  exit 1
+                }
+              }
+            '
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews?per_page=100" |
+            jq -e '
+              sort_by(.submitted_at) | group_by(.user.login) | map(last) |
+              any(.[]; .state == "APPROVED" and .user.type == "User")
+            ' >/dev/null || {
+              echo "Dependabot release-workflow updates require an active human approval review."
+              exit 1
+            }
 
   test:
     strategy:
