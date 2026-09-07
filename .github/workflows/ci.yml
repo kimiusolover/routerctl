@@ -73,7 +73,7 @@ jobs:
               /^--- |^\+\+\+ / { next }
               /^[+-]/ {
                 line = substr($0, 2)
-                if (line !~ /^[[:space:]]*uses:[[:space:]]+[[:alnum:]_.-]+\/[[:alnum:]_.-]+@[[:alnum:]_.-]+[[:space:]]*(#.*)?$/) {
+                if (line !~ /^[[:space:]]*-[[:space:]]*uses:[[:space:]]+[[:alnum:]_.-]+\/[[:alnum:]_.-]+@[[:alnum:]_.-]+[[:space:]]*(#.*)?$/) {
                   print "Dependabot exception permits only uses: version changes: " line > "/dev/stderr"
                   exit 1
                 }
