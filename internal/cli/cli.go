@@ -54,14 +54,22 @@ func Run(args []string, info BuildInfo) error {
 	}
 
 	switch args[0] {
-	case "git":
+	case "git", "repo":
 		return runGit(args[1:])
+	case "workspace":
+		if len(args) != 2 || args[1] != "doctor" {
+			return errors.New("usage: routerctl workspace doctor")
+		}
+		nextSteps(os.Stdout)
+		return nil
+	case "target":
+		return runTarget(args[1:])
 	case "build":
 		if len(args) != 2 {
 			return errors.New("usage: routerctl build <manifest>")
 		}
 		return runBuild(args[1])
-	case "regulatory":
+	case "regulatory", "compliance":
 		return runRegulatory(args[1:])
 	case "version":
 		fmt.Printf("routerctl %s (commit=%s date=%s)\n", info.Version, info.Commit, info.Date)
@@ -88,7 +96,7 @@ func Run(args []string, info BuildInfo) error {
 			return err
 		}
 		return printJSON(os.Stdout, p)
-	case "verify":
+	case "verify", "check":
 		if len(args) >= 2 && args[1] == "commit" {
 			return runVerifyCommit(args[2:])
 		}
@@ -105,6 +113,17 @@ func Run(args []string, info BuildInfo) error {
 		}
 		fmt.Println("OK")
 		return nil
+	case "release":
+		if len(args) < 2 {
+			return errors.New("usage: routerctl release resolve <manifest> | routerctl release verify <manifest.json> <SHA256SUMS> <provenance.json>")
+		}
+		switch args[1] {
+		case "resolve":
+			return Run(append([]string{"resolve"}, args[2:]...), info)
+		case "verify":
+			return Run(append([]string{"verify-release"}, args[2:]...), info)
+		}
+		return fmt.Errorf("unknown release command %q", args[1])
 	case "resolve":
 		if len(args) != 2 {
 			return errors.New("usage: routerctl resolve <manifest>")
@@ -693,14 +712,26 @@ func runGit(args []string) error {
 func runVerifyCommit(args []string) error {
 	fs := flag.NewFlagSet("verify commit", flag.ContinueOnError)
 	repository := fs.String("repo", ".", "Git repository path")
-	if err := fs.Parse(args); err != nil { return err }
-	if fs.NArg() > 1 { return errors.New("usage: routerctl verify commit [--repo <path>] [<revision>]") }
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 1 {
+		return errors.New("usage: routerctl verify commit [--repo <path>] [<revision>]")
+	}
 	revision := "HEAD"
-	if fs.NArg() == 1 { revision = fs.Arg(0) }
+	if fs.NArg() == 1 {
+		revision = fs.Arg(0)
+	}
 	result, err := gitops.VerifyCommit(*repository, revision)
-	if err != nil { return err }
-	for _, warning := range result.Warnings { fmt.Fprintf(os.Stderr, "WARN: %s\n", warning) }
-	if !result.OK() { return fmt.Errorf("commit verification failed: %v", result.Errors) }
+	if err != nil {
+		return err
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(os.Stderr, "WARN: %s\n", warning)
+	}
+	if !result.OK() {
+		return fmt.Errorf("commit verification failed: %v", result.Errors)
+	}
 	fmt.Println("OK")
 	return nil
 }
@@ -1126,4 +1157,23 @@ func findDeviceManifests(root string) []manifestCandidate {
 
 func ignoredManifestDirectory(name string) bool {
 	return strings.HasPrefix(name, ".") || name == "packaging" || name == "vendor" || name == "node_modules"
+}
+
+func runTarget(args []string) error {
+	if len(args) != 1 || args[0] != "list" {
+		return errors.New("usage: routerctl target list")
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("target list: current directory: %w", err)
+	}
+	candidates := findDeviceManifests(root)
+	if len(candidates) == 0 {
+		fmt.Println("No device manifests found below the current directory.")
+		return nil
+	}
+	for i, candidate := range candidates {
+		fmt.Printf("%d. %s  %s\n", i+1, candidate.Name, candidate.Path)
+	}
+	return nil
 }
