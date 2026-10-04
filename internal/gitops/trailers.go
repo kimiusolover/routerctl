@@ -3,6 +3,7 @@ package gitops
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -10,15 +11,20 @@ const (
 	GeneratedByTrailer     = "Generated-By"
 	ReviewedByTrailer      = "Reviewed-By"
 	AutomationActorTrailer = "Automation-Actor"
-	chatGPT                = "OpenAI ChatGPT"
 	routerctlSync          = "routerctl sync"
 	routerOSBot            = "router-os-bot[bot]"
+	maxAIAssistedByLen     = 128
 )
 
 // TrailerOptions describes declared provenance for a commit created by routerctl.
-// Empty fields are omitted; ReviewedBy must name a human when supplied.
+// Empty fields are omitted. AIAssistedBy names the AI system(s) that materially
+// assisted; ReviewedBy must name a human when supplied.
 type TrailerOptions struct {
-	AIAssisted      bool
+	// AIAssistedBy lists AI product names that materially assisted development.
+	// Each entry becomes one AI-Assisted-By trailer. Values are free-form product
+	// names (for example "Grok", "OpenAI ChatGPT", "Claude"); there is no vendor
+	// whitelist.
+	AIAssistedBy    []string
 	ReviewedBy      string
 	AutomationActor string
 }
@@ -44,14 +50,21 @@ func AddSyncTrailers(message string, options TrailerOptions) (string, error) {
 		return "", fmt.Errorf("%s must be %q", GeneratedByTrailer, routerctlSync)
 	}
 	appendTrailer := func(key, value string) {
-		if _, exists := trailers[key]; !exists {
-			message = strings.TrimRight(message, "\n") + "\n\n" + key + ": " + value
-			trailers[key] = []string{value}
-		}
+		message = strings.TrimRight(message, "\n") + "\n\n" + key + ": " + value
+		trailers[key] = append(trailers[key], value)
 	}
-	appendTrailer(GeneratedByTrailer, routerctlSync)
-	if options.AIAssisted {
-		appendTrailer(AIAssistedByTrailer, chatGPT)
+	if _, exists := trailers[GeneratedByTrailer]; !exists {
+		appendTrailer(GeneratedByTrailer, routerctlSync)
+	}
+	for _, name := range options.AIAssistedBy {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if err := validateAIAssistedByValue(name); err != nil {
+			return "", err
+		}
+		appendTrailer(AIAssistedByTrailer, name)
 	}
 	if reviewed := strings.TrimSpace(options.ReviewedBy); reviewed != "" {
 		appendTrailer(ReviewedByTrailer, reviewed)
@@ -61,6 +74,9 @@ func AddSyncTrailers(message string, options TrailerOptions) (string, error) {
 			return "", fmt.Errorf("%s must be %q", AutomationActorTrailer, routerOSBot)
 		}
 		appendTrailer(AutomationActorTrailer, actor)
+	}
+	if err := validateTrailerValues(parseTrailers(message)); err != nil {
+		return "", err
 	}
 	return message, nil
 }
@@ -100,14 +116,12 @@ func reviewRequired(paths []string) bool {
 }
 
 func validateTrailerValues(trailers map[string][]string) error {
-	for _, key := range []string{AIAssistedByTrailer, GeneratedByTrailer, ReviewedByTrailer, AutomationActorTrailer} {
-		values := trailers[key]
-		if len(values) > 1 {
+	// Generated-By, Reviewed-By, and Automation-Actor appear at most once.
+	// AI-Assisted-By may appear multiple times (one trailer per AI system).
+	for _, key := range []string{GeneratedByTrailer, ReviewedByTrailer, AutomationActorTrailer} {
+		if len(trailers[key]) > 1 {
 			return fmt.Errorf("%s must appear at most once", key)
 		}
-	}
-	if value := first(trailers[AIAssistedByTrailer]); value != "" && value != chatGPT {
-		return fmt.Errorf("%s must be %q", AIAssistedByTrailer, chatGPT)
 	}
 	if value := first(trailers[GeneratedByTrailer]); value != "" && value != routerctlSync {
 		return fmt.Errorf("%s must be %q", GeneratedByTrailer, routerctlSync)
@@ -115,8 +129,46 @@ func validateTrailerValues(trailers map[string][]string) error {
 	if value := first(trailers[AutomationActorTrailer]); value != "" && value != routerOSBot {
 		return fmt.Errorf("%s must be %q", AutomationActorTrailer, routerOSBot)
 	}
-	if value := first(trailers[ReviewedByTrailer]); value == chatGPT || value == routerOSBot {
-		return fmt.Errorf("%s must name a human, not %q", ReviewedByTrailer, value)
+	if value := first(trailers[ReviewedByTrailer]); value != "" {
+		if value == routerOSBot {
+			return fmt.Errorf("%s must name a human, not %q", ReviewedByTrailer, value)
+		}
+		// AI product names are not valid human reviewers.
+		for _, ai := range trailers[AIAssistedByTrailer] {
+			if value == ai {
+				return fmt.Errorf("%s must name a human, not an AI system (%q)", ReviewedByTrailer, value)
+			}
+		}
+	}
+	for _, value := range trailers[AIAssistedByTrailer] {
+		if err := validateAIAssistedByValue(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateAIAssistedByValue accepts any non-empty AI product name. There is no
+// vendor whitelist: the value identifies the system actually used.
+func validateAIAssistedByValue(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("%s value must not be empty", AIAssistedByTrailer)
+	}
+	if strings.ContainsAny(value, "\r\n") {
+		return fmt.Errorf("%s value must not contain newlines", AIAssistedByTrailer)
+	}
+	if len(value) > maxAIAssistedByLen {
+		return fmt.Errorf("%s value must be at most %d characters", AIAssistedByTrailer, maxAIAssistedByLen)
+	}
+	if value == routerOSBot {
+		return fmt.Errorf("%s must name an AI system, not %q", AIAssistedByTrailer, value)
+	}
+	// Reject values that are only whitespace or control characters after trim.
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("%s value must not contain control characters", AIAssistedByTrailer)
+		}
 	}
 	return nil
 }
