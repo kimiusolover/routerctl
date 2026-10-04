@@ -4,11 +4,13 @@
 
 - Yuta Nakano — project creator, maintainer, architecture, and hardware validation.
 
-## AI contributor
+## AI contributors
 
-### OpenAI ChatGPT / Codex
-
-AI assistance may include architecture, implementation, test design, documentation, specification analysis, and review assistance. The maintainer remains responsible for accepting changes and for every review required by the project safety policy.
+AI systems may assist with architecture, implementation, test design,
+documentation, specification analysis, and review assistance. Record the system
+actually used with `AI-Assisted-By` (for example `Grok`, `OpenAI ChatGPT`,
+`Claude Code`). The maintainer remains responsible for accepting changes and
+for every review required by the project safety policy.
 
 ## Automation
 

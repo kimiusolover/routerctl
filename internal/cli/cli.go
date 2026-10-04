@@ -661,7 +661,7 @@ func runGit(args []string) error {
 	repository := fs.String("repo", ".", "Git repository path")
 	message := fs.String("message", "", "Commit message (generated when empty)")
 	dryRun := fs.Bool("dry-run", false, "Show the generated commit message without changing Git")
-	aiAssisted := fs.Bool("ai-assisted", false, "Add AI-Assisted-By: OpenAI ChatGPT")
+	aiAssistedBy := fs.String("ai-assisted-by", "", "AI system name for AI-Assisted-By (e.g. Grok, OpenAI ChatGPT)")
 	reviewedBy := fs.String("reviewed-by", "", "Human reviewer name")
 	automationActor := fs.String("automation-actor", "", "Automation actor (router-os-bot[bot])")
 	if len(args) == 0 {
@@ -671,7 +671,11 @@ func runGit(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	options := gitops.Options{Repository: *repository, Message: *message, DryRun: *dryRun, Trailers: gitops.TrailerOptions{AIAssisted: *aiAssisted, ReviewedBy: *reviewedBy, AutomationActor: *automationActor}}
+	aiNames := []string{}
+	if name := strings.TrimSpace(*aiAssistedBy); name != "" {
+		aiNames = append(aiNames, name)
+	}
+	options := gitops.Options{Repository: *repository, Message: *message, DryRun: *dryRun, Trailers: gitops.TrailerOptions{AIAssistedBy: aiNames, ReviewedBy: *reviewedBy, AutomationActor: *automationActor}}
 	switch command {
 	case "status":
 		if *message != "" || *dryRun {
@@ -1058,7 +1062,7 @@ Usage:
   routerctl version
 	  routerctl git status [--repo <path>]
 	  routerctl git commit [--repo <path>] [--message <message>] [--dry-run]
-	  routerctl git sync [--repo <path>] [--message <message>] [--dry-run] [--ai-assisted] [--reviewed-by <human>] [--automation-actor router-os-bot[bot]]
+	  routerctl git sync [--repo <path>] [--message <message>] [--dry-run] [--ai-assisted-by <AI>] [--reviewed-by <human>] [--automation-actor router-os-bot[bot]]
   routerctl inspect <manifest>
   routerctl plan <manifest>
 	  routerctl verify <manifest>
