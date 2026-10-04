@@ -136,19 +136,15 @@ func VerifyCommit(repository, revision string) (CommitVerification, error) {
 }
 
 func addRequestedTrailers(message string, options TrailerOptions) (string, error) {
-	// Sync has already added and validated its complete trailer set before it
-	// reaches Commit; do not strip its Generated-By marker.
 	if first(parseTrailers(message)[GeneratedByTrailer]) != "" {
 		if err := validateTrailerValues(parseTrailers(message)); err != nil {
 			return "", err
 		}
 		return message, nil
 	}
-	if !options.AIAssisted && len(options.AIAssistedBy) == 0 && strings.TrimSpace(options.ReviewedBy) == "" && strings.TrimSpace(options.AutomationActor) == "" {
+	if len(options.AIAssistedBy) == 0 && strings.TrimSpace(options.ReviewedBy) == "" && strings.TrimSpace(options.AutomationActor) == "" {
 		return message, nil
 	}
-	// Commit has no generator trailer. Reuse the strict value validation and
-	// remove the sync marker it adds for this non-sync operation.
 	withSync, err := AddSyncTrailers(message, options)
 	if err != nil {
 		return "", err
