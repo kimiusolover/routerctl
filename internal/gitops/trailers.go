@@ -143,18 +143,18 @@ func reviewRequiredForProfile(paths []string, profile string) bool {
 			}
 
 		case "integration", "projectmain":
-			if strings.HasPrefix(path, "devices/") ||
-				strings.HasPrefix(path, "schemas/") ||
-				strings.HasPrefix(path, "certification/") ||
+			if strings.HasPrefix(path, ".routerctl/") ||
+				strings.HasSuffix(path, "DECISIONS.md") ||
+				strings.HasSuffix(path, "ARCHITECTURE.md") ||
+				strings.HasSuffix(path, "PROJECT.md") ||
 				strings.HasPrefix(path, ".github/workflows/") {
 				return true
 			}
 
 		case "platform", "router-platform":
-			if strings.HasPrefix(path, ".routerctl/") ||
-				strings.HasSuffix(path, "DECISIONS.md") ||
-				strings.HasSuffix(path, "ARCHITECTURE.md") ||
-				strings.HasSuffix(path, "PROJECT.md") ||
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "schemas/") ||
+				strings.HasPrefix(path, "certification/") ||
 				strings.HasPrefix(path, ".github/workflows/") {
 				return true
 			}
