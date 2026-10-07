@@ -151,6 +151,14 @@ func reviewRequiredForProfile(paths []string, profile string) bool {
 				return true
 			}
 
+		case "platform", "router-platform":
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "schemas/") ||
+				strings.HasPrefix(path, "certification/") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
 		case "infrastructure", "router-infra":
 			if strings.HasPrefix(path, "policy/") ||
 				strings.HasPrefix(path, "provenance/") ||
