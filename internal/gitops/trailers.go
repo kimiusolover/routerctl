@@ -142,7 +142,7 @@ func reviewRequiredForProfile(paths []string, profile string) bool {
 				return true
 			}
 
-		case "integration", "projectmain", "router-platform":
+		case "integration", "projectmain":
 			if strings.HasPrefix(path, "devices/") ||
 				strings.HasPrefix(path, "schemas/") ||
 				strings.HasPrefix(path, "certification/") ||
