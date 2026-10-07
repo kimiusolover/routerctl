@@ -37,22 +37,30 @@ func TestVerifyCommitMessage(t *testing.T) {
 		name     string
 		paths    []string
 		message  string
+		profile  string
 		ok       bool
 		warnings int
 	}{
-		{"ordinary generation", []string{"docs/note.md"}, "docs: update\n\nGenerated-By: routerctl sync", true, 1},
-		{"regulated change requires reviewer", []string{"examples/ax23v/regulatory/JP/certification-profile.yaml"}, "fix: regulatory", false, 0},
-		{"reviewed release is valid", []string{".github/workflows/release.yml"}, "ci: publish\n\nReviewed-By: Yuta Nakano", true, 0},
-		{"grok assistance is valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: Grok", true, 0},
-		{"openai assistance is valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: OpenAI ChatGPT", true, 0},
-		{"multiple ai systems are valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: Grok\nAI-Assisted-By: Claude", true, 0},
-		{"empty ai value fails", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: ", false, 0},
-		{"bot as ai fails", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: router-os-bot[bot]", false, 0},
-		{"reviewed by same as ai fails", []string{".github/workflows/release.yml"}, "ci: publish\n\nAI-Assisted-By: Grok\nReviewed-By: Grok", false, 0},
+		{"ordinary generation", []string{"docs/note.md"}, "docs: update\n\nGenerated-By: routerctl sync", "", true, 1},
+		{"regulated change requires reviewer", []string{"examples/ax23v/regulatory/JP/certification-profile.yaml"}, "fix: regulatory", "", false, 0},
+		{"reviewed release is valid", []string{".github/workflows/release.yml"}, "ci: publish\n\nReviewed-By: Yuta Nakano", "", true, 0},
+		{"grok assistance is valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: Grok", "", true, 0},
+		{"openai assistance is valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: OpenAI ChatGPT", "", true, 0},
+		{"multiple ai systems are valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: Grok\nAI-Assisted-By: Claude", "", true, 0},
+		{"empty ai value fails", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: ", "", false, 0},
+		{"bot as ai fails", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: router-os-bot[bot]", "", false, 0},
+		{"reviewed by same as ai fails", []string{".github/workflows/release.yml"}, "ci: publish\n\nAI-Assisted-By: Grok\nReviewed-By: Grok", "", false, 0},
+		{"firmware profile requires review for devices", []string{"devices/ax23v.yaml"}, "feat: firmware", "firmware", false, 0},
+		{"firmware profile with reviewer is valid", []string{"devices/ax23v.yaml"}, "feat: firmware\n\nReviewed-By: Alice", "firmware", true, 0},
+		{"regulatory profile requires review for documents", []string{"documents/report.pdf"}, "docs: update", "regulatory", false, 0},
+		{"regulatory profile with reviewer is valid", []string{"documents/report.pdf"}, "docs: update\n\nReviewed-By: Bob", "regulatory", true, 0},
+		{"infrastructure profile requires review for actions", []string{"actions/deploy.yml"}, "ci: deploy", "infrastructure", false, 0},
+		{"upstream profile requires review for targets", []string{"targets/openwrt.mk"}, "feat: target", "upstream", false, 0},
+		{"package profile requires review for network", []string{"network/prefix/pkg.mk"}, "feat: package", "package", false, 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := VerifyCommitMessage(test.paths, test.message)
+			got := VerifyCommitMessageWithProfile(test.paths, test.message, test.profile)
 			if got.OK() != test.ok {
 				t.Fatalf("OK=%v errors=%v", got.OK(), got.Errors)
 			}

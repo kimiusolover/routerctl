@@ -716,17 +716,18 @@ func runGit(args []string) error {
 func runVerifyCommit(args []string) error {
 	fs := flag.NewFlagSet("verify commit", flag.ContinueOnError)
 	repository := fs.String("repo", ".", "Git repository path")
+	profile := fs.String("profile", "", "Repository trailer policy profile (e.g. policy-source, firmware, integration, infrastructure, upstream, package, regulatory)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 1 {
-		return errors.New("usage: routerctl verify commit [--repo <path>] [<revision>]")
+		return errors.New("usage: routerctl verify commit [--repo <path>] [--profile <profile>] [<revision>]")
 	}
 	revision := "HEAD"
 	if fs.NArg() == 1 {
 		revision = fs.Arg(0)
 	}
-	result, err := gitops.VerifyCommit(*repository, revision)
+	result, err := gitops.VerifyCommitWithProfile(*repository, revision, *profile)
 	if err != nil {
 		return err
 	}
