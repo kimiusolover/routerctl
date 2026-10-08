@@ -65,11 +65,11 @@ jobs:
           test -n "$files" || { echo "Dependabot PR has no changed files."; exit 1; }
           while IFS= read -r file; do
             case "$file" in
-              .github/workflows/*.yml|.github/workflows/*.yaml) ;;
+              go.mod|go.sum|.github/workflows/*.yml|.github/workflows/*.yaml) ;;
               *) echo "Dependabot exception forbids changed path: $file"; exit 1 ;;
             esac
           done <<< "$files"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" --jq '.[].patch // empty' |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" --jq '.[] | select(.filename | startswith(".github/workflows/")) | .patch // empty' |
             awk '
               /^--- |^\+\+\+ / { next }
               /^[+-]/ {
