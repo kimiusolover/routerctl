@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.base.ref }}
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
       - uses: actions/setup-go@v7
         if: github.event.pull_request.user.login != 'dependabot[bot]'
@@ -39,6 +39,7 @@ jobs:
           git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER"
           git cat-file -e "$BASE_SHA^{commit}"
           git cat-file -e "$HEAD_SHA^{commit}"
+          git switch --force-create trailer-verifier-base "$BASE_SHA"
       - name: Verify pull request commit trailers
         if: github.event.pull_request.user.login != 'dependabot[bot]'
         env:
