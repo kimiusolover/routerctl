@@ -42,7 +42,7 @@ func TestVerifyCommitMessage(t *testing.T) {
 	}{
 		{"ordinary generation", []string{"docs/note.md"}, "docs: update\n\nGenerated-By: routerctl sync", true, 1},
 		{"regulated change requires reviewer", []string{"examples/ax23v/regulatory/JP/certification-profile.yaml"}, "fix: regulatory", false, 0},
-		{"reviewed release is valid", []string{".github/workflows/release.yml"}, "ci: publish\n\nReviewed-By: Yuta Nakano", true, 0},
+		{"single maintainer self-review is valid", []string{".github/workflows/release.yml"}, "ci: publish\n\nReviewed-By: Yuta Nakano", true, 0},
 		{"grok assistance is valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: Grok", true, 0},
 		{"openai assistance is valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: OpenAI ChatGPT", true, 0},
 		{"multiple ai systems are valid", []string{"README.md"}, "docs: update\n\nAI-Assisted-By: Grok\nAI-Assisted-By: Claude", true, 0},
