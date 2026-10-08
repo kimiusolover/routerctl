@@ -57,6 +57,8 @@ func TestVerifyCommitMessage(t *testing.T) {
 		{"infrastructure profile requires review for actions", []string{"actions/deploy.yml"}, "ci: deploy", "infrastructure", false, 0},
 		{"upstream profile requires review for targets", []string{"targets/openwrt.mk"}, "feat: target", "upstream", false, 0},
 		{"package profile requires review for network", []string{"network/prefix/pkg.mk"}, "feat: package", "package", false, 0},
+		{"platform profile requires review for devices", []string{"devices/tplink/ax23v/device.toml"}, "feat: platform", "platform", false, 0},
+		{"platform profile with reviewer is valid", []string{"devices/tplink/ax23v/device.toml"}, "feat: platform\n\nReviewed-By: Alice", "platform", true, 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

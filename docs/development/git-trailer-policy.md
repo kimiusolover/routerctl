@@ -53,7 +53,7 @@ Each repository runs `routerctl verify commit --profile <profile>` in its `commi
 
 - `routerctl` -> `--profile policy-source`
 - `router-firmware` -> `--profile firmware`
-- `projectmain` -> `--profile integration`
+- `router-platform` -> `--profile platform`
 - `router-infra` -> `--profile infrastructure`
 - `router-upstream` -> `--profile upstream`
 - `router-packages` -> `--profile package`
