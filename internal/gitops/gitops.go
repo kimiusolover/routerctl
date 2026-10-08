@@ -144,7 +144,7 @@ func addRequestedTrailers(message string, options TrailerOptions) (string, error
 		}
 		return message, nil
 	}
-	if !options.AIAssisted && len(options.AIAssistedBy) == 0 && strings.TrimSpace(options.ReviewedBy) == "" && strings.TrimSpace(options.AutomationActor) == "" {
+	if len(options.AIAssistedBy) == 0 && strings.TrimSpace(options.ReviewedBy) == "" && strings.TrimSpace(options.AutomationActor) == "" {
 		return message, nil
 	}
 	// Commit has no generator trailer. Reuse the strict value validation and
