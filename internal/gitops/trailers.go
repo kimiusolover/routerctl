@@ -85,8 +85,13 @@ func AddSyncTrailers(message string, options TrailerOptions) (string, error) {
 // require a real human reviewer; a routerctl-generated sync without a bot
 // actor remains valid but is reported for audit follow-up.
 func VerifyCommitMessage(paths []string, message string) CommitVerification {
+	return VerifyCommitMessageWithProfile(paths, message, "")
+}
+
+// VerifyCommitMessageWithProfile enforces the project trailer policy for a given profile.
+func VerifyCommitMessageWithProfile(paths []string, message string, profile string) CommitVerification {
 	trailers := parseTrailers(message)
-	result := CommitVerification{ReviewRequired: reviewRequired(paths)}
+	result := CommitVerification{ReviewRequired: reviewRequiredForProfile(paths, profile)}
 	if err := validateTrailerValues(trailers); err != nil {
 		result.Errors = append(result.Errors, err.Error())
 	}
@@ -99,17 +104,114 @@ func VerifyCommitMessage(paths []string, message string) CommitVerification {
 	return result
 }
 
-func reviewRequired(paths []string) bool {
+func reviewRequiredForProfile(paths []string, profile string) bool {
+	profile = strings.ToLower(strings.TrimSpace(profile))
 	for _, path := range paths {
 		path = strings.TrimSpace(strings.ReplaceAll(path, "\\", "/"))
-		switch {
-		case strings.HasPrefix(path, "devices/"),
-			strings.HasPrefix(path, "profiles/"),
-			strings.HasPrefix(path, "examples/") && strings.Contains(path, "/regulatory/"),
-			strings.HasPrefix(path, "schemas/certification-"),
-			strings.HasPrefix(path, "internal/regulatory/") && (strings.Contains(path, "derive") || strings.Contains(path, "profile")),
-			strings.HasPrefix(path, ".github/workflows/") && (strings.Contains(path, "release") || strings.Contains(path, "publish")):
+		if path == "" {
+			continue
+		}
+
+		// Common sensitive rules across all profiles:
+		if strings.HasPrefix(path, ".github/workflows/release") ||
+			strings.HasPrefix(path, ".github/workflows/publish") ||
+			strings.Contains(path, "regulatory") ||
+			strings.Contains(path, "certification") {
 			return true
+		}
+
+		switch profile {
+		case "policy-source", "routerctl":
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "profiles/") ||
+				strings.HasPrefix(path, "examples/") && strings.Contains(path, "/regulatory/") ||
+				strings.HasPrefix(path, "schemas/certification-") ||
+				strings.HasPrefix(path, "internal/regulatory/") && (strings.Contains(path, "derive") || strings.Contains(path, "profile")) ||
+				strings.HasPrefix(path, ".github/workflows/") && (strings.Contains(path, "release") || strings.Contains(path, "publish")) {
+				return true
+			}
+
+		case "firmware", "router-firmware":
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "overlays/") ||
+				strings.HasPrefix(path, "rootfs/") ||
+				strings.HasPrefix(path, "patches/") ||
+				strings.HasPrefix(path, "schemas/") ||
+				strings.HasPrefix(path, "scripts/") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		case "integration", "projectmain":
+			if strings.HasPrefix(path, ".routerctl/") ||
+				strings.HasSuffix(path, "DECISIONS.md") ||
+				strings.HasSuffix(path, "ARCHITECTURE.md") ||
+				strings.HasSuffix(path, "PROJECT.md") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		case "platform", "router-platform":
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "schemas/") ||
+				strings.HasPrefix(path, "certification/") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		case "infrastructure", "router-infra":
+			if strings.HasPrefix(path, "policy/") ||
+				strings.HasPrefix(path, "provenance/") ||
+				strings.HasPrefix(path, "release/") ||
+				strings.HasPrefix(path, "sbom/") ||
+				strings.HasPrefix(path, "actions/") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		case "upstream", "router-upstream":
+			if strings.HasPrefix(path, "policies/") ||
+				strings.HasPrefix(path, "schemas/") ||
+				strings.HasPrefix(path, "targets/") ||
+				strings.HasPrefix(path, "toolchains/") ||
+				strings.HasPrefix(path, "cross/") ||
+				strings.HasPrefix(path, "patches/") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		case "package", "router-packages":
+			if strings.HasPrefix(path, "core/") ||
+				strings.HasPrefix(path, "network/") ||
+				strings.HasPrefix(path, "packaging/") ||
+				strings.HasPrefix(path, "tiny/") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		case "regulatory", "certificatedb":
+			// certificateDB is the most strict profile.
+			// Regulatory changes, certification data, verified evidence, release/promotion require human review.
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "documents/") ||
+				strings.HasPrefix(path, "jurisdictions/") ||
+				strings.HasPrefix(path, "review-gates/") ||
+				strings.HasPrefix(path, "schemas/") ||
+				strings.HasPrefix(path, "tools/") ||
+				strings.HasSuffix(path, ".md") ||
+				strings.HasPrefix(path, ".github/workflows/") {
+				return true
+			}
+
+		default:
+			if strings.HasPrefix(path, "devices/") ||
+				strings.HasPrefix(path, "profiles/") ||
+				strings.HasPrefix(path, "examples/") && strings.Contains(path, "/regulatory/") ||
+				strings.HasPrefix(path, "schemas/certification-") ||
+				strings.HasPrefix(path, "internal/regulatory/") && (strings.Contains(path, "derive") || strings.Contains(path, "profile")) ||
+				strings.HasPrefix(path, ".github/workflows/") && (strings.Contains(path, "release") || strings.Contains(path, "publish")) {
+				return true
+			}
 		}
 	}
 	return false

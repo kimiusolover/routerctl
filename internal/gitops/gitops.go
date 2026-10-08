@@ -117,6 +117,11 @@ func Sync(options Options) (string, error) {
 // VerifyCommit reads a commit without changing the repository and applies the
 // trailer policy to its message and changed paths.
 func VerifyCommit(repository, revision string) (CommitVerification, error) {
+	return VerifyCommitWithProfile(repository, revision, "")
+}
+
+// VerifyCommitWithProfile reads a commit and applies trailer policy for a given profile.
+func VerifyCommitWithProfile(repository, revision, profile string) (CommitVerification, error) {
 	root, err := output(repository, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return CommitVerification{}, fmt.Errorf("git verify commit: not a repository: %w", err)
@@ -132,12 +137,10 @@ func VerifyCommit(repository, revision string) (CommitVerification, error) {
 	if err != nil {
 		return CommitVerification{}, fmt.Errorf("git verify commit: read changed paths: %w", err)
 	}
-	return VerifyCommitMessage(nonEmptyLines(pathsText), message), nil
+	return VerifyCommitMessageWithProfile(nonEmptyLines(pathsText), message, profile), nil
 }
 
 func addRequestedTrailers(message string, options TrailerOptions) (string, error) {
-	// Sync has already added and validated its complete trailer set before it
-	// reaches Commit; do not strip its Generated-By marker.
 	if first(parseTrailers(message)[GeneratedByTrailer]) != "" {
 		if err := validateTrailerValues(parseTrailers(message)); err != nil {
 			return "", err
@@ -147,8 +150,6 @@ func addRequestedTrailers(message string, options TrailerOptions) (string, error
 	if len(options.AIAssistedBy) == 0 && strings.TrimSpace(options.ReviewedBy) == "" && strings.TrimSpace(options.AutomationActor) == "" {
 		return message, nil
 	}
-	// Commit has no generator trailer. Reuse the strict value validation and
-	// remove the sync marker it adds for this non-sync operation.
 	withSync, err := AddSyncTrailers(message, options)
 	if err != nil {
 		return "", err

@@ -47,6 +47,7 @@ Rules:
 
 `Generated-By`, `Reviewed-By`, and `Automation-Actor` still use fixed or human-only values as above.
 
+
 ## Self-review for single-maintainer repositories
 
 This project permits self-review when a repository is maintained by a
@@ -62,16 +63,29 @@ The reviewer must actually inspect the resulting change.
 `Reviewed-By` must identify a human. AI systems and automation actors must
 not be recorded as the reviewer.
 
+## Repository Profiles
+
+Each repository runs `routerctl verify commit --profile <profile>` in its `commit-trailer-policy` status check:
+
+- `routerctl` -> `--profile policy-source`
+- `router-firmware` -> `--profile firmware`
+- `router-platform` -> `--profile platform`
+- `router-infra` -> `--profile infrastructure`
+- `router-upstream` -> `--profile upstream`
+- `router-packages` -> `--profile package`
+- `certificateDB` -> `--profile regulatory`
+
+
 ## Local checks
 
 ```sh
-routerctl verify commit
+routerctl verify commit --profile policy-source
 routerctl git sync --ai-assisted-by Grok --reviewed-by "Yuta Nakano" --automation-actor 'router-os-bot[bot]'
 ```
 
 `Generated-By: routerctl sync` without `Automation-Actor` is a warning, not a failure: local interactive sync is allowed, but an automated GitHub operation must identify its bot actor. The verifier rejects invalid trailer shapes, wrong fixed values for `Generated-By` / `Automation-Actor`, and non-human values for `Reviewed-By`.
 
-GitHub Actions runs `routerctl verify commit` for every commit in a pull request
+GitHub Actions runs `routerctl verify commit --profile <profile>` for every commit in a pull request
 as the `commit-trailer-policy` status check. Protect the target branch by
 requiring that check; direct writes and releases remain separately governed by
 repository permissions.
