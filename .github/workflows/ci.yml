@@ -24,7 +24,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v6
         if: github.event.pull_request.user.login != 'dependabot[bot]'
         with:
           go-version-file: go.mod
@@ -96,7 +96,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       # Image cropping and OCR integration tests invoke these tools directly.
